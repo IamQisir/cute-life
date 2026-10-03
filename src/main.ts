@@ -56,8 +56,8 @@ async function main() {
       syncAnim();
     },
     toggleSound() {
-      audio.setEnabled(!audio.enabled);
-      hud.setSound(audio.enabled);
+      audio.unlock();
+      hud.setSound(audio.cycleMode());
     },
     toggleHand,
     pickPattern(p) {
@@ -137,7 +137,7 @@ async function main() {
       const now = performance.now();
       const v = value ?? !sim.has(x, y);
       if (sim.set(x, y, v, now)) {
-        if (now - lastPopAt > 45) {
+        if (now - lastPopAt > 90) {
           if (v) audio.pop(x, y);
           else audio.poof();
           lastPopAt = now;
@@ -195,7 +195,7 @@ async function main() {
     now,
   );
   refreshStatus();
-  hud.setSound(audio.enabled);
+  hud.setSound(audio.mode);
   syncAnim();
 
   const onResize = () => {

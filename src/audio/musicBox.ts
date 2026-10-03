@@ -1,9 +1,12 @@
 // Births play notes from a pentatonic scale chosen by position, so repeating
-// patterns play repeating melodies. A quiet pad underneath keeps it cosy.
+// patterns play repeating melodies. Notes are not played per generation: births
+// go into a pool and a slow "conductor" plucks at most one note per beat, so the
+// melody stays calm however fast the simulation runs. A quiet pad sits underneath.
 
 const SCALE = [0, 2, 4, 7, 9]; // major pentatonic
 const ROOT_HZ = 523.25; // C5
-const MAX_NOTES_PER_STEP = 4;
+const BEAT_MS = 700;
+const REST_CHANCE = 0.3;
 const PAD_CHORDS = [
   [48, 55, 59, 64], // Cmaj7
   [45, 52, 55, 60], // Am7
@@ -19,12 +22,27 @@ export function noteFor(x: number, y: number): number {
   return ROOT_HZ * Math.pow(2, (SCALE[i % SCALE.length] + 12 * octave) / 12);
 }
 
+/** 'all' = notes + pad, 'music' = pad only, 'off' = silent. */
+export type SoundMode = 'all' | 'music' | 'off';
+const NEXT_MODE: Record<SoundMode, SoundMode> = { all: 'music', music: 'off', off: 'all' };
+
 export class MusicBox {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private padGain: GainNode | null = null;
   private padTimer = 0;
-  enabled = true;
+  private beatTimer = 0;
+  private pool: number[] = [];
+  private lastNote = 0;
+  mode: SoundMode = 'all';
+
+  get enabled() {
+    return this.mode !== 'off';
+  }
+
+  private get notesOn() {
+    return this.mode === 'all';
+  }
 
   /** Must be called from a user gesture. Safe to call repeatedly. */
   unlock() {
@@ -48,13 +66,17 @@ export class MusicBox {
     delay.connect(fb).connect(delay);
     delay.connect(wet).connect(ctx.destination);
     this.startPad();
+    this.beatTimer = window.setInterval(() => this.beat(), BEAT_MS);
   }
 
-  setEnabled(on: boolean) {
-    this.enabled = on;
+  /** Cycles all -> music only -> off. Returns the new mode. */
+  cycleMode(): SoundMode {
+    this.mode = NEXT_MODE[this.mode];
     if (this.ctx && this.master) {
-      this.master.gain.setTargetAtTime(on ? 1 : 0, this.ctx.currentTime, 0.1);
+      this.master.gain.setTargetAtTime(this.enabled ? 1 : 0, this.ctx.currentTime, 0.1);
     }
+    this.pool = [];
+    return this.mode;
   }
 
   private bell(freq: number, when: number, gain: number) {
@@ -78,21 +100,30 @@ export class MusicBox {
 
   /** Called once per generation with the newborn cell positions. */
   births(points: [number, number][]) {
-    if (!this.ctx || !this.enabled || points.length === 0) return;
-    const picked = new Map<number, number>();
-    for (const [x, y] of points) {
-      const f = noteFor(x, y);
-      picked.set(f, (picked.get(f) ?? 0) + 1);
+    if (!this.ctx || !this.notesOn || points.length === 0) return;
+    // Keep only a few recent candidates; the conductor picks from them.
+    for (let i = 0; i < 3; i++) {
+      const [x, y] = points[Math.floor(Math.random() * points.length)];
+      this.pool.push(noteFor(x, y));
     }
-    const freqs = [...picked.keys()].sort((a, b) => a - b).slice(0, MAX_NOTES_PER_STEP);
-    const t = this.ctx.currentTime;
-    const gain = 0.09 / Math.sqrt(freqs.length);
-    freqs.forEach((f, i) => this.bell(f, t + i * 0.045, gain));
+    if (this.pool.length > 9) this.pool.splice(0, this.pool.length - 9);
+  }
+
+  private beat() {
+    if (!this.ctx || !this.notesOn || this.pool.length === 0) return;
+    const pool = this.pool;
+    this.pool = [];
+    if (Math.random() < REST_CHANCE) return;
+    // Prefer a note different from the last one so it sounds like a tune.
+    const fresh = pool.filter((f) => f !== this.lastNote);
+    const f = (fresh.length ? fresh : pool)[Math.floor(Math.random() * (fresh.length || pool.length))];
+    this.lastNote = f;
+    this.bell(f, this.ctx.currentTime, 0.06);
   }
 
   /** Soft bubble pop for placing a cell by hand. */
   pop(x: number, y: number) {
-    if (!this.ctx || !this.enabled) return;
+    if (!this.ctx || !this.notesOn) return;
     const ctx = this.ctx;
     const t = ctx.currentTime;
     const o = ctx.createOscillator();
@@ -111,7 +142,7 @@ export class MusicBox {
 
   /** Soft descending blip for erasing. */
   poof() {
-    if (!this.ctx || !this.enabled) return;
+    if (!this.ctx || !this.notesOn) return;
     const ctx = this.ctx;
     const t = ctx.currentTime;
     const o = ctx.createOscillator();
@@ -158,6 +189,7 @@ export class MusicBox {
 
   dispose() {
     clearInterval(this.padTimer);
+    clearInterval(this.beatTimer);
     this.ctx?.close();
   }
 }

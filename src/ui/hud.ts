@@ -1,4 +1,5 @@
 import { PATTERNS, type Pattern } from '../life/patterns';
+import type { SoundMode } from '../audio/musicBox';
 import { WorldView } from '../render/world';
 
 export interface HudActions {
@@ -123,9 +124,9 @@ export class Hud {
     this.playBtn.textContent = on ? 'pause' : 'play';
   }
 
-  setSound(on: boolean) {
-    this.soundBtn.textContent = on ? 'sound on' : 'sound off';
-    this.soundBtn.classList.toggle('on', !on);
+  setSound(mode: SoundMode) {
+    this.soundBtn.textContent = { all: 'sound on', music: 'music only', off: 'sound off' }[mode];
+    this.soundBtn.classList.toggle('on', mode !== 'all');
   }
 
   setHand(on: boolean) {

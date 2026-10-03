@@ -190,7 +190,8 @@ async function main() {
       ...placePattern(byName('glider'), -6, -1),
       ...placePattern(byName('blinker'), 5, -2),
       ...placePattern(byName('beacon'), 1, 4),
-      [-2, 5],
+      [8, 3], [9, 3], [8, 4], [9, 4], // a sleepy block
+      [-9, 6],
     ],
     now,
   );

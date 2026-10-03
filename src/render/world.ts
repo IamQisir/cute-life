@@ -1,24 +1,22 @@
-import { CanvasSource, Container, Graphics, Sprite, Texture, TilingSprite } from 'pixi.js';
+import { Container, Graphics, type Texture, TilingSprite } from 'pixi.js';
 import { keyX, keyY } from '../life/engine';
 import type { Sim } from '../sim';
 import type { Camera } from './camera';
 import { MOODS, type Mood, PALETTES, TEX_SIZE, drawBud, drawCell, drawDot, drawPaper } from './cellArt';
+import { OrganismView } from './organisms';
+import { SpritePool, cellHash, tex } from './util';
+
+export { cellHash };
 
 const VARIANTS_PER_PALETTE = 2;
-/** Below this many pixels per cell, faces are unreadable: draw dots instead. */
-const FACE_ZOOM = 14;
+const NONE: never[] = [];
+// Semantic zoom: individual cells up close, organisms in the middle, dots far away.
+/** Organisms fade in below FADE_HI and fully replace cells below FADE_LO. */
+const FADE_LO = 13;
+const FADE_HI = 17;
+/** Below this, organisms are too small to read: plain coloured dots. */
+const DOT_ZOOM = 4;
 const GRID_ZOOM = 9;
-
-function tex(canvas: HTMLCanvasElement): Texture {
-  return new Texture({ source: new CanvasSource({ resource: canvas, autoGenerateMipmaps: true }) });
-}
-
-/** Cheap integer hash so every cell gets a stable look and rhythm. */
-export function cellHash(x: number, y: number): number {
-  let h = Math.imul(x, 73856093) ^ Math.imul(y, 19349663);
-  h = Math.imul(h ^ (h >>> 13), 0x5bd1e995);
-  return ((h ^ (h >>> 15)) >>> 0) >>> 4;
-}
 
 const easeOutBack = (t: number) => {
   const c1 = 1.9;
@@ -47,37 +45,6 @@ function buildTextures(): Textures {
   return { faces, dots, bud: tex(drawBud()) };
 }
 
-/** Grows on demand and hides whatever wasn't used this frame. */
-class SpritePool {
-  private sprites: Sprite[] = [];
-  private used = 0;
-  constructor(private layer: Container) {}
-
-  begin() {
-    this.used = 0;
-  }
-
-  next(texture: Texture): Sprite {
-    let s = this.sprites[this.used];
-    if (!s) {
-      s = new Sprite(texture);
-      s.anchor.set(0.5);
-      this.layer.addChild(s);
-      this.sprites.push(s);
-    }
-    this.used++;
-    s.texture = texture;
-    s.visible = true;
-    s.alpha = 1;
-    s.rotation = 0;
-    return s;
-  }
-
-  end() {
-    for (let i = this.used; i < this.sprites.length; i++) this.sprites[i].visible = false;
-  }
-}
-
 export interface StampPreview {
   points: [number, number][];
 }
@@ -93,6 +60,8 @@ export class WorldView {
   private stampPool: SpritePool;
   private tx = buildTextures();
   private gridSig = '';
+  private cellsRoot = new Container();
+  private organisms = new OrganismView();
 
   constructor() {
     this.paper = new TilingSprite({ texture: tex(drawPaper()), width: 1, height: 1 });
@@ -100,7 +69,8 @@ export class WorldView {
     const cellLayer = new Container();
     const fadeLayer = new Container();
     const stampLayer = new Container();
-    this.root.addChild(this.paper, this.creases, this.grid, budLayer, fadeLayer, cellLayer, stampLayer);
+    this.cellsRoot.addChild(budLayer, fadeLayer, cellLayer);
+    this.root.addChild(this.paper, this.creases, this.grid, this.organisms.root, this.cellsRoot, stampLayer);
     this.budPool = new SpritePool(budLayer);
     this.cellPool = new SpritePool(cellLayer);
     this.fadePool = new SpritePool(fadeLayer);
@@ -170,7 +140,15 @@ export class WorldView {
     this.drawGrid(cam);
 
     const z = cam.zoom;
-    const faces = z >= FACE_ZOOM;
+    const faces = z >= FADE_LO;
+    const dots = z < DOT_ZOOM;
+    const cellAlpha = faces ? Math.min(1, (z - FADE_LO) / (FADE_HI - FADE_LO)) : dots ? 1 : 0;
+    this.cellsRoot.alpha = cellAlpha;
+    this.cellsRoot.visible = cellAlpha > 0;
+    const orgAlpha = dots ? 0 : 1 - cellAlpha;
+    this.organisms.root.visible = orgAlpha > 0;
+    this.organisms.root.alpha = orgAlpha;
+    if (orgAlpha > 0) this.organisms.update(now, sim, cam);
     const [wx0, wy0] = cam.toWorld(-z, -z);
     const [wx1, wy1] = cam.toWorld(cam.w + z, cam.h + z);
     const inView = (x: number, y: number) => x >= wx0 && x <= wx1 && y >= wy0 && y <= wy1;
@@ -198,7 +176,8 @@ export class WorldView {
     this.budPool.end();
 
     this.cellPool.begin();
-    for (const k of sim.cells) {
+    // Skip per-cell work entirely while organisms have fully taken over.
+    for (const k of cellAlpha > 0 ? sim.cells : NONE) {
       const x = keyX(k);
       const y = keyY(k);
       if (!inView(x, y)) continue;
@@ -240,7 +219,7 @@ export class WorldView {
 
     // Fading cells drift up and dissolve.
     this.fadePool.begin();
-    for (const f of sim.fading) {
+    for (const f of cellAlpha > 0 ? sim.fading : NONE) {
       const t = (now - f.t0) / anim;
       if (t < 0 || t >= 1) continue;
       const x = keyX(f.k);

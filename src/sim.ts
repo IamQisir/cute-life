@@ -13,6 +13,8 @@ export class Sim {
   counts = new Map<number, number>();
   budKeys: number[] = [];
   generation = 0;
+  /** Bumps whenever the set of live cells changes. */
+  version = 0;
   bornAt = new Map<number, number>();
   fading: Fading[] = [];
 
@@ -82,6 +84,7 @@ export class Sim {
   }
 
   private refresh() {
+    this.version++;
     this.counts = neighborCounts(this.cells);
     this.budKeys = buds(this.cells, this.counts);
   }

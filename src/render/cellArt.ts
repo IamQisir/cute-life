@@ -302,6 +302,52 @@ export function drawCell(palette: Palette, seed: number, mood: Mood | null): HTM
   return canvas;
 }
 
+/** Just the face, on a transparent canvas: organisms wear these. */
+export function drawFaceOnly(palette: Palette, mood: Mood): HTMLCanvasElement {
+  const [canvas, ctx] = newCanvas();
+  drawFace(ctx, palette, mood);
+  return canvas;
+}
+
+/** Tileable diagonal pencil hatching, laid over organism membranes. */
+export function drawHatch(size = 64): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d')!;
+  const rand = rng(11);
+  ctx.strokeStyle = '#5a4632';
+  ctx.lineCap = 'round';
+  for (let o = -size; o < size * 2; o += 6) {
+    ctx.globalAlpha = 0.1 + rand() * 0.08;
+    ctx.lineWidth = 1 + rand() * 0.8;
+    ctx.beginPath();
+    ctx.moveTo(o, size);
+    ctx.lineTo(o + size, 0);
+    ctx.stroke();
+  }
+  return c;
+}
+
+/** A handwritten "z" for sleepers. */
+export function drawZ(): HTMLCanvasElement {
+  const [canvas, ctx] = newCanvas();
+  const c = TEX_SIZE / 2;
+  line(ctx, [c - 14, c - 14, c + 14, c - 16, c - 14, c + 14, c + 15, c + 13], 5, '#7a6a5c');
+  return canvas;
+}
+
+/** A little music note for dancers. */
+export function drawNote(): HTMLCanvasElement {
+  const [canvas, ctx] = newCanvas();
+  const c = TEX_SIZE / 2;
+  ctx.fillStyle = '#c4483a';
+  ctx.beginPath();
+  ctx.ellipse(c - 8, c + 16, 10, 7, -0.4, 0, Math.PI * 2);
+  ctx.fill();
+  line(ctx, [c + 1, c + 14, c + 1, c - 24, c + 16, c - 12], 4.5, '#c4483a');
+  return canvas;
+}
+
 /** A dotted pencil ring with a sparkle: "something is about to be born here". */
 export function drawBud(): HTMLCanvasElement {
   const [canvas, ctx] = newCanvas();

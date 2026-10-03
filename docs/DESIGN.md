@@ -9,9 +9,13 @@
 ## Milestones
 - [x] **M1 Sandbox**: infinite canvas, pan/zoom, mood faces, birth/fade animation,
   buds, stamps, music box + pad
-- [ ] **M2 Semantic zoom**: connected components; known patterns become creatures
-  (glider = crawling bug, block = sleeping loaf, blinker = blinking eye);
-  unknown clusters render as one amoeba; far zoom shows colonies
+- [x] **M2 Semantic zoom**: cells within Chebyshev distance 2 (i.e. that can
+  influence a shared cell) form one organism with a shared hatched membrane.
+  Families: still lifes sleep (lavender, "z"), oscillators dance (yellow, notes),
+  spaceships travel (mint, speed lines, face leads), blobs (blue) show the
+  majority mood; big colonies grow several small faces. Zoom bands:
+  >=17 cells, 13-17 crossfade, 4-13 organisms, <4 dots.
+  Per-pattern creature art (block = loaf etc.) is deferred to M5
 - [ ] **M3 Share**: pattern encoded in URL, GIF/video export
 - [ ] **M4 Red vs blue**: bounded toroidal arena, Immigration rule, turn-based vs AI
 - [ ] **M5 Art swap**: AI-generated body sprites (faceless) replace procedural bodies;

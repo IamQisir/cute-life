@@ -26,6 +26,9 @@ npm test
 npm run build
 ```
 
+Share: **share** copies a link that reopens your exact scene; **record**
+saves a short MP4 (with sound and a watermark) ready to post.
+
 URL params for demos: `?play`, `?sprinkle`, `?zoom=8`.
 
 ## Controls

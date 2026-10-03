@@ -11,6 +11,14 @@ export interface HudActions {
   toggleSound(): void;
   toggleHand(): void;
   pickPattern(p: Pattern | null): void;
+  toggleRecord(): void;
+  share(): void;
+}
+
+export interface ResultActions {
+  download(): void;
+  copyLink(): void;
+  post(): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -56,6 +64,8 @@ export class Hud {
   private status = el('div', 'status');
   private playBtn: HTMLButtonElement;
   private soundBtn: HTMLButtonElement;
+  private recordBtn: HTMLButtonElement;
+  private modal: HTMLElement | null = null;
   private handBtn: HTMLButtonElement;
   private hint = el('div', 'hint');
   private toastEl = el('div', 'toast');
@@ -72,7 +82,8 @@ export class Hud {
     const topRight = el('div', 'top-right');
     this.soundBtn = button('sound on', a.toggleSound);
     this.handBtn = button('move', a.toggleHand);
-    topRight.append(this.handBtn, this.soundBtn);
+    this.recordBtn = button('record', a.toggleRecord, 'rec');
+    topRight.append(this.recordBtn, button('share', a.share), this.handBtn, this.soundBtn);
 
     const palette = el('div', 'palette');
     palette.append(el('div', 'label', 'stamps'));
@@ -135,6 +146,45 @@ export class Hud {
 
   setPattern(p: Pattern | null) {
     for (const [q, card] of this.cards) card.classList.toggle('on', q === p);
+  }
+
+  /** Seconds elapsed while recording, or null when idle. */
+  setRecording(seconds: number | null, max: number) {
+    this.recordBtn.classList.toggle('live', seconds !== null);
+    this.recordBtn.textContent =
+      seconds === null ? 'record' : `stop ${Math.floor(seconds)}s / ${max}s`;
+  }
+
+  /** A sticky-note popup with the finished clip. */
+  showResult(videoUrl: string, ext: string, a: ResultActions) {
+    this.closeResult();
+    const back = el('div', 'modal-back');
+    const card = el('div', 'modal');
+    const video = el('video');
+    video.src = videoUrl;
+    video.autoplay = video.loop = video.muted = video.playsInline = true;
+    video.controls = true;
+    const note = el('div', 'modal-note',
+      ext === 'mp4'
+        ? 'your clip is ready! save it, then attach it to your post ~'
+        : 'saved as WebM; X only takes MP4, so try Chrome or Safari for posting');
+    const row = el('div', 'controls');
+    row.append(
+      button('save video', a.download, 'big'),
+      button('copy link', a.copyLink),
+      button('post on X', a.post),
+      button('close', () => this.closeResult()),
+    );
+    card.append(el('div', 'modal-title', 'look what grew!'), video, note, row);
+    back.append(card);
+    back.addEventListener('pointerdown', (e) => e.target === back && this.closeResult());
+    document.body.append(back);
+    this.modal = back;
+  }
+
+  closeResult() {
+    this.modal?.remove();
+    this.modal = null;
   }
 
   dismissHint() {

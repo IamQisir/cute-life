@@ -1,14 +1,20 @@
-import { Application } from 'pixi.js';
+import { Application, UPDATE_PRIORITY } from 'pixi.js';
 import { MusicBox } from './audio/musicBox';
 import { attachInput } from './input';
-import { keyX, keyY } from './life/engine';
+import { keyX, keyY, toList } from './life/engine';
 import { PATTERNS, type Pattern, placePattern } from './life/patterns';
 import { Camera } from './render/camera';
 import { WorldView } from './render/world';
+import { fromHash, toHash } from './share/link';
+import { Recorder, type Recording } from './share/recorder';
 import { Sim } from './sim';
 import { Hud } from './ui/hud';
 
 const POPULATION_CAP = 25000;
+const MAX_RECORD_SECONDS = 15;
+/** Links longer than this still work, but some apps truncate them. */
+const LONG_LINK = 8000;
+const POST_TEXT = 'my little cells are growing 🌱 #cutelife #GameOfLife';
 
 async function main() {
   const stage = document.getElementById('stage')!;
@@ -60,6 +66,10 @@ async function main() {
       hud.setSound(audio.cycleMode());
     },
     toggleHand,
+    toggleRecord,
+    share() {
+      copyLink();
+    },
     pickPattern(p) {
       pattern = p;
       rotation = 0;
@@ -131,6 +141,97 @@ async function main() {
     return pts.map(([px, py]) => [px + x, py + y]);
   }
 
+  // ---- sharing -------------------------------------------------------------
+
+  const icon = WorldView.portrait('happy', 0);
+  const favicon = document.createElement('link');
+  favicon.rel = 'icon';
+  favicon.href = icon.toDataURL();
+  document.head.append(favicon);
+  function drawWatermark(ctx: CanvasRenderingContext2D, w: number, h: number) {
+    const size = Math.max(18, Math.round(h * 0.045));
+    ctx.save();
+    ctx.font = `700 ${size}px Caveat, cursive`;
+    ctx.textBaseline = 'alphabetic';
+    const pad = size * 0.6;
+    const label = 'cute life';
+    const tw = ctx.measureText(label).width;
+    const iconSize = size * 1.5;
+    ctx.globalAlpha = 0.92;
+    ctx.drawImage(icon, w - pad - tw - iconSize * 0.95, h - pad - iconSize * 0.8, iconSize, iconSize);
+    ctx.fillStyle = '#c4483a';
+    ctx.fillText(label, w - pad - tw, h - pad);
+    ctx.font = `500 ${Math.round(size * 0.8)}px Caveat, cursive`;
+    ctx.fillStyle = '#7a6a5c';
+    ctx.fillText(`generation ${sim.generation} · ${sim.population} cells`, pad, h - pad);
+    ctx.restore();
+  }
+
+  const recorder = new Recorder(app.canvas, {
+    maxSeconds: MAX_RECORD_SECONDS,
+    maxWidth: 1280,
+    overlay: drawWatermark,
+    audio: () => audio.stream,
+  });
+  let clipUrl = '';
+  let shownSecond = -1;
+
+  function shareLink(): string {
+    const hash = toHash({ points: toList(sim.cells), cam: { x: cam.x, y: cam.y, zoom: cam.zoom } });
+    history.replaceState(null, '', hash);
+    return location.href;
+  }
+
+  async function copyLink() {
+    if (sim.population === 0) {
+      hud.toast('draw some cells first, then share them!');
+      return;
+    }
+    const link = shareLink();
+    try {
+      await navigator.clipboard.writeText(link);
+      hud.toast(link.length > LONG_LINK ? 'link copied! (it is a big one)' : 'link copied ~ paste it anywhere!');
+    } catch {
+      window.prompt('copy this link:', link);
+    }
+  }
+
+  function onRecorded(r: Recording) {
+    hud.setRecording(null, MAX_RECORD_SECONDS);
+    shownSecond = -1;
+    if (clipUrl) URL.revokeObjectURL(clipUrl);
+    clipUrl = URL.createObjectURL(r.blob);
+    hud.showResult(clipUrl, r.ext, {
+      download() {
+        const a = document.createElement('a');
+        a.href = clipUrl;
+        a.download = `cute-life-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${r.ext}`;
+        a.click();
+      },
+      copyLink,
+      post() {
+        const url = sim.population ? shareLink() : location.origin + location.pathname;
+        const intent = `https://x.com/intent/post?text=${encodeURIComponent(POST_TEXT)}&url=${encodeURIComponent(url)}`;
+        window.open(intent, '_blank', 'noopener');
+      },
+    });
+  }
+
+  function toggleRecord() {
+    if (recorder.recording) {
+      recorder.stop();
+      return;
+    }
+    audio.unlock();
+    hud.closeResult();
+    if (!recorder.start(onRecorded)) {
+      hud.toast("sorry, this browser can't record video");
+      return;
+    }
+    if (!playing && sim.population > 0) setPlaying(true);
+    hud.setRecording(0, MAX_RECORD_SECONDS);
+  }
+
   attachInput(app.canvas, {
     cam,
     paint(x, y, value) {
@@ -182,10 +283,13 @@ async function main() {
     },
   });
 
-  // Start with a few friends so the first screen already says hello.
+  // A shared link restores its pattern; otherwise start with a few friends
+  // so the first screen already says hello.
   const now = performance.now();
   const byName = (n: string) => PATTERNS.find((p) => p.name === n)!;
-  sim.addMany(
+  const shared = fromHash(location.hash);
+  if (shared) sim.addMany(shared.points, now);
+  else sim.addMany(
     [
       ...placePattern(byName('glider'), -6, -1),
       ...placePattern(byName('blinker'), 5, -2),
@@ -206,6 +310,11 @@ async function main() {
     view.resize(cam.w, cam.h);
   };
   onResize();
+  if (shared?.cam) {
+    cam.x = shared.cam.x;
+    cam.y = shared.cam.y;
+    cam.zoom = shared.cam.zoom;
+  }
   window.addEventListener('resize', () => {
     cam.w = app.screen.width;
     cam.h = app.screen.height;
@@ -222,6 +331,17 @@ async function main() {
     const stamp = pattern && hover ? { points: stampPoints(hover[0], hover[1]) } : null;
     view.update(t, sim, cam, stamp, true);
   });
+
+  // Runs after Pixi renders (LOW priority), while the WebGL frame is still readable.
+  app.ticker.add(() => {
+    if (!recorder.recording) return;
+    recorder.captureFrame();
+    const sec = Math.floor(recorder.elapsed);
+    if (sec !== shownSecond && recorder.recording) {
+      shownSecond = sec;
+      hud.setRecording(sec, MAX_RECORD_SECONDS);
+    }
+  }, undefined, UPDATE_PRIORITY.UTILITY);
 
   // ?play starts running immediately, ?zoom=N sets pixels per cell; handy for demos and screenshots.
   const params = new URLSearchParams(location.search);

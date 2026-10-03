@@ -29,6 +29,7 @@ const NEXT_MODE: Record<SoundMode, SoundMode> = { all: 'music', music: 'off', of
 export class MusicBox {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private tap: MediaStreamAudioDestinationNode | null = null;
   private padGain: GainNode | null = null;
   private padTimer = 0;
   private beatTimer = 0;
@@ -61,12 +62,22 @@ export class MusicBox {
     fb.gain.value = 0.25;
     const wet = ctx.createGain();
     wet.gain.value = 0.3;
-    this.master.connect(ctx.destination);
+    // Everything ends in `out`, which feeds the speakers and the recording tap.
+    const out = ctx.createGain();
+    out.connect(ctx.destination);
+    this.tap = ctx.createMediaStreamDestination();
+    out.connect(this.tap);
+    this.master.connect(out);
     this.master.connect(delay);
     delay.connect(fb).connect(delay);
-    delay.connect(wet).connect(ctx.destination);
+    delay.connect(wet).connect(out);
     this.startPad();
     this.beatTimer = window.setInterval(() => this.beat(), BEAT_MS);
+  }
+
+  /** The mixed output as a stream, for recording. Null until audio is unlocked. */
+  get stream(): MediaStream | null {
+    return this.tap?.stream ?? null;
   }
 
   /** Cycles all -> music only -> off. Returns the new mode. */

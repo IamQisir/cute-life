@@ -1,0 +1,32 @@
+.welcome-showing #hud { opacity: 0; pointer-events: none; }
+#stage { transition: opacity 240ms ease; }
+.welcome-leaving #stage { opacity: 0; }
+.welcome-overlay {
+  position: fixed; inset: 0; z-index: 11; touch-action: none;
+  transition: opacity 240ms ease;
+  background: linear-gradient(rgba(242, 236, 224, 0.2), transparent 45%);
+}
+.welcome-note {
+  position: absolute; top: max(16px, env(safe-area-inset-top)); left: 50%;
+  transform: translateX(-50%) rotate(-1deg);
+  width: min(520px, calc(100vw - 32px)); max-height: calc(100dvh - 32px);
+  padding: 18px 22px; overflow-y: auto; touch-action: pan-y;
+  background: #fff6c9; border: 1.6px solid var(--ink-soft);
+  border-radius: var(--sketch-2); box-shadow: 4px 6px 0 rgba(0, 0, 0, 0.09);
+  font-size: 23px; line-height: 1.25;
+}
+.welcome-title { margin: 0 0 8px; color: var(--red); font: 700 38px/1.1 'Caveat', cursive; }
+.welcome-copy p { margin: 8px 0; }
+.welcome-invitation { color: var(--ink-soft); }
+.welcome-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 10px; }
+.welcome-actions .btn { font-size: 21px; }
+.welcome-actions .welcome-skip { border: 0; background: transparent; box-shadow: none; text-decoration: underline; padding: 2px 8px; font-size: 18px; }
+.welcome-actions .btn:focus-visible { outline: 2px dashed var(--blue); outline-offset: 3px; }
+.welcome-final .welcome-note { top: auto; bottom: max(18px, env(safe-area-inset-bottom)); }
+.welcome-closing { opacity: 0; }
+@media (max-width: 720px), (max-height: 540px) {
+  .welcome-note { padding: 12px 16px; font-size: 19px; }
+  .welcome-title { font-size: 30px; }
+  .welcome-actions .btn { font-size: 19px; }
+}
+@media (prefers-reduced-motion: reduce) { .welcome-overlay, #stage { transition: none; } }

@@ -2,10 +2,23 @@ import { describe, expect, it } from 'vitest';
 import {
   RULES_CARDS,
   TOUR_STEPS,
+  WELCOME_LINES,
+  WELCOME_CARD,
   type TourTarget,
 } from '../src/ui/onboardingText';
 
 describe('onboardingText', () => {
+  it('keeps welcome copy brief, plain text and ready for three beats', () => {
+    expect(WELCOME_LINES).toHaveLength(3);
+    for (const text of [...WELCOME_LINES, ...Object.values(WELCOME_CARD)]) {
+      expect(text.trim().length).toBeGreaterThan(0);
+      expect(text.length).toBeLessThanOrEqual(90);
+      expect(text).not.toMatch(/[<>]/);
+    }
+    expect(WELCOME_LINES[2]).toContain("Conway's Game of Life");
+    expect(WELCOME_CARD.tour).toBe('show me around');
+    expect(WELCOME_CARD.play).toBe('let me play');
+  });
   describe('TOUR_STEPS', () => {
     it('has exactly 5 tour steps in the expected target order', () => {
       const expectedOrder: TourTarget[] = ['palette', 'controls', 'mode', 'share', 'canvas'];

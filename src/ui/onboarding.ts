@@ -4,6 +4,7 @@ import type { Mode } from './modes';
 import { nextOnboarding, OnboardingSeen } from './onboardingState';
 import { RULES_CARDS, TOUR_STEPS, type TourTarget } from './onboardingText';
 import './onboarding.css';
+import type { WelcomeShow } from './welcomeShow';
 
 const TARGETS: Record<Exclude<TourTarget, 'canvas'>, string> = {
   palette: '.palette', controls: '.bottom .controls', mode: '.mode-btn', share: '.top-right .rec, .top-right .share-btn',
@@ -37,7 +38,7 @@ export class Onboarding {
   private returnFocus: HTMLElement | null = null;
   private backgrounds: { node: HTMLElement; inert: boolean }[] = [];
 
-  constructor(private currentMode: () => Mode) {
+  constructor(private currentMode: () => Mode, private welcome: WelcomeShow) {
     // Capture both phases, even if focus escapes the dialog. Space toggles the
     // game's play state on keyup, so blocking only keydown is insufficient.
     document.addEventListener('keydown', (event) => {
@@ -70,14 +71,25 @@ export class Onboarding {
   }
 
   modeChanged() {
-    if (!this.started || this.overlay || document.querySelector('.modal-back')) return;
+    if (!this.started || this.overlay || this.welcome.active || document.querySelector('.modal-back')) return;
     const next = nextOnboarding(this.seen.state, this.currentMode(), this.linkVisit);
-    if (next === 'tour') this.openTour(false);
-    else if (next === 'rules') this.openRules();
+    if (next === 'welcome') {
+      this.seen.welcomeSeen();
+      this.welcome.start((tour) => {
+        const choice = nextOnboarding(this.seen.state, this.currentMode(), this.linkVisit, tour ? 'choose-tour' : 'choose-play');
+        if (choice === 'tour') this.openTour(false);
+      });
+    } else if (next === 'rules') this.openRules();
   }
 
   openHelp() {
-    if (!this.overlay) this.openTour(true);
+    if (!this.overlay && !this.welcome.active) this.openTour(true);
+  }
+
+  /** Both the play button and Space use this hook; link visits stay unobstructed. */
+  played() {
+    if (!this.overlay && !this.welcome.active
+      && nextOnboarding(this.seen.state, this.currentMode(), this.linkVisit, 'play') === 'rules') this.openRules();
   }
 
   private mount() {
@@ -222,7 +234,7 @@ export class Onboarding {
   }
 
   private dismiss() {
-    if (this.touring && (this.forceRules || nextOnboarding(this.seen.state, this.currentMode(), this.linkVisit) === 'rules')) {
+    if (this.touring && (this.forceRules || nextOnboarding(this.seen.state, this.currentMode(), this.linkVisit, 'tour-end') === 'rules')) {
       this.openRules();
       return;
     }

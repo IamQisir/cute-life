@@ -32,6 +32,7 @@ import type { CardHandlers } from './ui/patternCard';
 import { SelectionMenu, type StampEntry, openImportDialog, openStampOffer } from './ui/stamps';
 import { Hud } from './ui/hud';
 import { Onboarding } from './ui/onboarding';
+import { WelcomeShow } from './ui/welcomeShow';
 
 const POPULATION_CAP = 25000;
 const MAX_RECORD_SECONDS = 15;
@@ -135,7 +136,11 @@ async function main() {
     },
   });
 
-  const onboarding = new Onboarding(() => mode);
+  const welcome = new WelcomeShow({
+    sim, cam, playing: () => playing, following: () => following,
+    setPlaying, setFollowing, refreshStatus,
+  });
+  const onboarding = new Onboarding(() => mode, welcome);
 
   /** Shared entry point for the help button and the future title-cell action. */
   function openHelp() {
@@ -155,6 +160,7 @@ async function main() {
   function togglePlay() {
     audio.unlock();
     setPlaying(!playing);
+    if (playing) onboarding.played();
   }
 
   function toggleHand() {
@@ -822,6 +828,12 @@ async function main() {
 
   app.ticker.add(() => {
     const t = performance.now();
+    if (welcome.active) {
+      welcome.update(t);
+      selectionGfx.clear();
+      view.update(t, sim, cam, null, true);
+      return;
+    }
     if (playing && t - lastStep >= 1000 / genPerSec) {
       lastStep = t;
       advance();

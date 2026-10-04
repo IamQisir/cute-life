@@ -1,4 +1,18 @@
 /** Which HUD area a tour step points at (the UI maps these to elements). */
+export const WELCOME_LINES = [
+  'welcome to cute life ~',
+  'a tiny world where cells are born, live and dance',
+  "every cell follows four simple rules — Conway's Game of Life",
+] as const;
+
+export const WELCOME_CARD = {
+  title: 'your little world awaits ~',
+  text: 'draw a few friends, press play, and see what grows.',
+  tour: 'show me around',
+  play: 'let me play',
+  skip: 'skip',
+} as const;
+
 export type TourTarget = 'palette' | 'controls' | 'mode' | 'share' | 'canvas';
 
 export interface TourStep {

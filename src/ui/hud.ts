@@ -2,6 +2,7 @@ import { type Category, byCategory } from '../life/catalog';
 import { type Pattern, cellCount } from '../life/patterns';
 import type { SoundMode } from '../audio/musicBox';
 import { WorldView } from '../render/world';
+import { attachCornerCells } from './cornerCells';
 import { type CardHandlers, patternCard } from './patternCard';
 import { isPaletteHidden, paletteSection, setPaletteHidden } from './paletteSections';
 import { type StampEntry, type StampSectionActions, stampSection } from './stamps';
@@ -14,6 +15,8 @@ import { Popover } from './popover';
 const OPEN_BY_DEFAULT = new Set<Category>(['spaceship', 'gun', 'oscillator']);
 
 export interface HudActions {
+  openHelp(): void;
+  wakeCell(index: number): void;
   togglePlay(): void;
   step(): void;
   shuffle(): void;
@@ -24,7 +27,6 @@ export interface HudActions {
   pickPattern(p: Pattern | null): void;
   toggleRecord(): void;
   share(): void;
-  openHelp(): void;
   setMode(mode: PlayableMode): void;
   /** Drag-and-drop from palette cards onto the canvas. */
   cardDrag: CardHandlers;
@@ -105,6 +107,7 @@ export class Hud {
   private selectBtn: HTMLButtonElement;
   private followBtn: HTMLButtonElement;
   private picked: Pattern | null = null;
+  private cornerCells: ReturnType<typeof attachCornerCells>;
 
   constructor(root: HTMLElement, a: HudActions) {
     this.root = root;
@@ -250,6 +253,8 @@ export class Hud {
     });
 
     root.append(topArea, palette, this.hint, bottom, this.toastEl, ...sleepers);
+    // Before setMode below, which resets the corner cells.
+    this.cornerCells = attachCornerCells(title, sleepers, a);
     this.setMode('sandbox');
     this.setHand(false);
     this.setSelect(false);
@@ -322,6 +327,7 @@ export class Hud {
 
   /** Switch the HUD between the sandbox and battle layouts. */
   setMode(mode: PlayableMode) {
+    this.cornerCells.reset();
     this.root.classList.toggle('battle', mode === 'battle');
     this.mode = mode;
     const name = MODES.find((option) => option.id === mode)!.name;
@@ -383,6 +389,11 @@ export class Hud {
 
   dismissHint() {
     this.hint.classList.add('gone');
+  }
+
+  dispose() {
+    this.cornerCells.dispose();
+    clearTimeout(this.toastTimer);
   }
 
   toast(msg: string, ms = 2600) {

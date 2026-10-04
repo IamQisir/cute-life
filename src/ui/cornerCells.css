@@ -1,0 +1,57 @@
+#hud > .sleeper { pointer-events: auto; cursor: pointer; }
+.title[role="button"] { cursor: pointer; }
+.sleeper:focus-visible, .title[role="button"]:focus-visible {
+  outline: 2px dashed var(--ink-soft);
+  outline-offset: 3px;
+  border-radius: 12px;
+}
+.sleeper .z, .sleeper img { pointer-events: none; }
+.sleeper.awake .z { visibility: hidden; animation-play-state: paused; }
+.sleeper.awake img { animation: cell-wake 600ms ease-out; }
+.sleeper[data-pokes="2"] img { animation: cell-yawn 650ms ease-in-out; }
+.sleeper[data-pokes="3"] img { transform: scale(1.16, 0.9); animation: cell-puff 450ms ease-out; }
+.sleeper[data-pokes="4"] img { animation: cell-surprise 600ms ease-out; }
+.title.opening-help img { animation: cell-help 520ms ease-in-out; }
+
+.sleeper .cell-bubble {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  width: min(250px, calc(100vw - 24px));
+  max-height: calc(100vh - 100px);
+  overflow: auto;
+  overflow-wrap: anywhere;
+  padding: 8px 12px;
+  border: 1.6px solid var(--ink-soft);
+  border-radius: var(--sketch);
+  background: #fffbef;
+  box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.06);
+  font-size: 18px;
+  line-height: 1.25;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 350ms ease, visibility 0s 350ms;
+}
+.sleeper.bl .cell-bubble { left: 0; }
+.sleeper.br .cell-bubble { right: 0; }
+.sleeper.awake .cell-bubble { opacity: 1; visibility: visible; transition-delay: 0s; }
+
+@keyframes cell-wake {
+  25% { transform: scale(0.88, 1.18); }
+  55% { transform: translateY(-14px) scale(1.05, 0.96); }
+  80% { transform: translateY(2px) scale(1.1, 0.9); }
+}
+@keyframes cell-yawn { 50% { transform: scale(0.9, 1.16) rotate(-8deg); } }
+@keyframes cell-puff {
+  0% { transform: scale(1); }
+  55% { transform: scale(1.24, 0.85) rotate(5deg); }
+  100% { transform: scale(1.16, 0.9); }
+}
+@keyframes cell-surprise { 50% { transform: translateY(-16px) rotate(18deg); } }
+@keyframes cell-help { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sleeper img, .sleeper.awake img, .sleeper .z,
+  .title img, .title.opening-help img { animation: none; }
+  .sleeper .cell-bubble { transition: none; }
+}

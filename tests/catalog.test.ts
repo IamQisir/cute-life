@@ -6,6 +6,9 @@ import { pointsFromRows } from '../src/life/library';
 import { cellCount } from '../src/life/patterns';
 import { decodeRle } from '../src/share/rle';
 
+/** Puffers (Noah's ark: period 1344) and growth runs simulate thousands of generations; CI runners are slow. */
+const LONG_RUN_MS = 30_000;
+
 type Bounds = [minX: number, minY: number, maxX: number, maxY: number];
 type Offset = [dx: number, dy: number];
 
@@ -214,7 +217,7 @@ describe('puffers and rakes', () => {
       previousBox = coreBox;
     }
     console.info(`${e.id}: period ${period}, engine offset ${offset}, speed c/${period / Math.max(...offset.map(Math.abs))}`);
-  });
+  }, LONG_RUN_MS);
 });
 
 describe('methuselahs', () => {
@@ -252,7 +255,7 @@ describe('infinite-growth seeds', () => {
     expect(populations.get(3000)!).toBeGreaterThan(populations.get(2000)!);
     expect(populations.get(3000)!).toBeGreaterThan(3 * populations.get(100)!);
     console.info(`${e.id}: populations at 100, 1000, 2000, 3000 = ${[...populations.values()]}`);
-  });
+  }, LONG_RUN_MS);
 });
 
 describe('reflectors', () => {

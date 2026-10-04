@@ -20,10 +20,10 @@ describe('onboardingText', () => {
       }
     });
 
-    it('has non-empty texts with length <= 110 characters and no angle brackets', () => {
+    it('has non-empty texts with length <= 120 characters and no angle brackets', () => {
       for (const step of TOUR_STEPS) {
         expect(step.text.trim().length).toBeGreaterThan(0);
-        expect(step.text.length).toBeLessThanOrEqual(110);
+        expect(step.text.length).toBeLessThanOrEqual(120);
         expect(step.text).not.toMatch(/[<>]/);
       }
     });

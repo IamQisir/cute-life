@@ -30,8 +30,8 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     target: 'canvas',
-    title: 'canvas',
-    text: 'scroll or pinch to zoom, right-drag or hold space to move, click to draw a cell ~',
+    title: 'zoom in & out',
+    text: 'zoom in to meet every cell ~ zoom out and they team up into creatures ~ scroll or pinch to zoom, right-drag to move',
   },
 ];
 

@@ -21,6 +21,12 @@ export const PALETTES: Palette[] = [
   { body: '#ecdff4', hatch: '#c3a3dd', outline: '#6b4f88', nucleus: '#a983cc', blush: '#f4a2c0' },
 ];
 
+/** Team colours for battles: warm red vs cool blue. */
+export const TEAM_PALETTES: Record<1 | 2, Palette> = {
+  1: { body: '#f9d6cc', hatch: '#ee8f7b', outline: '#9c3b2c', nucleus: '#e2654f', blush: '#f29a8a' },
+  2: { body: '#d4e0f7', hatch: '#86a3e2', outline: '#304c8c', nucleus: '#5f86d6', blush: '#f4a7b9' },
+};
+
 export const TEX_SIZE = 128;
 const INK = '#3b302a';
 

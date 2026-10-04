@@ -13,6 +13,7 @@ export interface HudActions {
   pickPattern(p: Pattern | null): void;
   toggleRecord(): void;
   share(): void;
+  toggleBattle(): void;
 }
 
 export interface ResultActions {
@@ -65,6 +66,8 @@ export class Hud {
   private playBtn: HTMLButtonElement;
   private soundBtn: HTMLButtonElement;
   private recordBtn: HTMLButtonElement;
+  private battleBtn: HTMLButtonElement;
+  private root: HTMLElement;
   private modal: HTMLElement | null = null;
   private handBtn: HTMLButtonElement;
   private hint = el('div', 'hint');
@@ -73,6 +76,7 @@ export class Hud {
   private cards = new Map<Pattern, HTMLElement>();
 
   constructor(root: HTMLElement, a: HudActions) {
+    this.root = root;
     const title = el('div', 'title');
     const icon = el('img');
     icon.src = WorldView.portrait('happy', 0).toDataURL();
@@ -83,7 +87,8 @@ export class Hud {
     this.soundBtn = button('sound on', a.toggleSound);
     this.handBtn = button('move', a.toggleHand);
     this.recordBtn = button('record', a.toggleRecord, 'rec');
-    topRight.append(this.recordBtn, button('share', a.share), this.handBtn, this.soundBtn);
+    this.battleBtn = button('battle!', a.toggleBattle, 'battle-btn');
+    topRight.append(this.battleBtn, this.recordBtn, button('share', a.share), this.handBtn, this.soundBtn);
 
     const palette = el('div', 'palette');
     palette.append(el('div', 'label', 'stamps'));
@@ -146,6 +151,12 @@ export class Hud {
 
   setPattern(p: Pattern | null) {
     for (const [q, card] of this.cards) card.classList.toggle('on', q === p);
+  }
+
+  /** Switch the HUD between the sandbox and battle layouts. */
+  setMode(mode: 'sandbox' | 'battle') {
+    this.root.classList.toggle('battle', mode === 'battle');
+    this.battleBtn.textContent = mode === 'battle' ? 'sandbox' : 'battle!';
   }
 
   /** Seconds elapsed while recording, or null when idle. */

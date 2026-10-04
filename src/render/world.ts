@@ -1,14 +1,16 @@
 import { Container, Graphics, type Texture, TilingSprite } from 'pixi.js';
 import { keyX, keyY } from '../life/engine';
-import type { Sim } from '../sim';
+import type { SimView } from '../sim';
 import type { Camera } from './camera';
-import { MOODS, type Mood, PALETTES, TEX_SIZE, drawBud, drawCell, drawDot, drawPaper } from './cellArt';
+import { MOODS, type Mood, PALETTES, TEAM_PALETTES, TEX_SIZE, drawBud, drawCell, drawDot, drawPaper } from './cellArt';
 import { OrganismView } from './organisms';
 import { SpritePool, cellHash, tex } from './util';
 
 export { cellHash };
 
 const VARIANTS_PER_PALETTE = 2;
+/** Texture index where team variants start: sandbox palettes first, then red, then blue. */
+const TEAM_BASE = PALETTES.length * VARIANTS_PER_PALETTE;
 const NONE: never[] = [];
 // Semantic zoom: individual cells up close, organisms in the middle, dots far away.
 /** Organisms fade in below FADE_HI and fully replace cells below FADE_LO. */
@@ -42,6 +44,14 @@ function buildTextures(): Textures {
       dots.push(tex(drawDot(p)));
     }
   });
+  for (const team of [1, 2] as const) {
+    for (let v = 0; v < VARIANTS_PER_PALETTE; v++) {
+      const set = {} as Record<Mood, Texture>;
+      for (const m of MOODS) set[m] = tex(drawCell(TEAM_PALETTES[team], 5000 + team * 31 + v * 7, m));
+      faces.push(set);
+      dots.push(tex(drawDot(TEAM_PALETTES[team])));
+    }
+  }
   return { faces, dots, bud: tex(drawBud()) };
 }
 
@@ -61,6 +71,8 @@ export class WorldView {
   private tx = buildTextures();
   private gridSig = '';
   private cellsRoot = new Container();
+  /** Drawn above the grid and below cells (e.g. the battle arena). */
+  readonly underlay = new Container();
   private organisms = new OrganismView();
 
   constructor() {
@@ -70,7 +82,7 @@ export class WorldView {
     const fadeLayer = new Container();
     const stampLayer = new Container();
     this.cellsRoot.addChild(budLayer, fadeLayer, cellLayer);
-    this.root.addChild(this.paper, this.creases, this.grid, this.organisms.root, this.cellsRoot, stampLayer);
+    this.root.addChild(this.paper, this.creases, this.grid, this.underlay, this.organisms.root, this.cellsRoot, stampLayer);
     this.budPool = new SpritePool(budLayer);
     this.cellPool = new SpritePool(cellLayer);
     this.fadePool = new SpritePool(fadeLayer);
@@ -135,17 +147,20 @@ export class WorldView {
     g.stroke({ width: 1.4, color: 0x8a7d6c, alpha: 0.34 * alpha });
   }
 
-  update(now: number, sim: Sim, cam: Camera, stamp: StampPreview | null, showBuds: boolean) {
+  update(now: number, sim: SimView, cam: Camera, stamp: StampPreview | null, showBuds: boolean) {
     this.paper.tilePosition.set(-cam.x * cam.zoom, -cam.y * cam.zoom);
     this.drawGrid(cam);
 
     const z = cam.zoom;
-    const faces = z >= FADE_LO;
-    const dots = z < DOT_ZOOM;
-    const cellAlpha = faces ? Math.min(1, (z - FADE_LO) / (FADE_HI - FADE_LO)) : dots ? 1 : 0;
+    // Battles keep individual cells at every zoom: organism colours mean
+    // "kind of pattern", which would clash with team colours.
+    const individuals = sim.organisms === false;
+    const faces = individuals ? z >= GRID_ZOOM : z >= FADE_LO;
+    const dots = individuals ? !faces : z < DOT_ZOOM;
+    const cellAlpha = individuals || dots ? 1 : faces ? Math.min(1, (z - FADE_LO) / (FADE_HI - FADE_LO)) : 0;
     this.cellsRoot.alpha = cellAlpha;
     this.cellsRoot.visible = cellAlpha > 0;
-    const orgAlpha = dots ? 0 : 1 - cellAlpha;
+    const orgAlpha = individuals || dots ? 0 : 1 - cellAlpha;
     this.organisms.root.visible = orgAlpha > 0;
     this.organisms.root.alpha = orgAlpha;
     if (orgAlpha > 0) this.organisms.update(now, sim, cam);
@@ -155,7 +170,10 @@ export class WorldView {
     const scale = (faces ? 1.3 : 1) * z / TEX_SIZE;
     const sec = now / 1000;
     const anim = sim.animMs;
-    const variants = this.tx.faces.length;
+    const teamOf = sim.teamOf?.bind(sim);
+    /** Texture variant: by team in battles, by position hash in the sandbox. */
+    const pick = (k: number, h: number, team = teamOf?.(k)) =>
+      team ? TEAM_BASE + (team - 1) * VARIANTS_PER_PALETTE + (h % VARIANTS_PER_PALETTE) : h % TEAM_BASE;
 
     // Buds: the rule made visible — "a cell will be born here".
     this.budPool.begin();
@@ -182,7 +200,7 @@ export class WorldView {
       const y = keyY(k);
       if (!inView(x, y)) continue;
       const h = cellHash(x, y);
-      const v = h % variants;
+      const v = pick(k, h);
       const ph = (h % 628) / 100;
       let [sx, sy] = cam.toScreen(x + 0.5, y + 0.5);
 
@@ -226,7 +244,7 @@ export class WorldView {
       const y = keyY(f.k);
       if (!inView(x, y)) continue;
       const h = cellHash(x, y);
-      const v = h % variants;
+      const v = pick(f.k, h, f.team);
       const [sx, sy] = cam.toScreen(x + 0.5, y + 0.5);
       const s = this.fadePool.next(faces ? this.tx.faces[v].fading : this.tx.dots[v]);
       s.position.set(sx + Math.sin(t * 5 + h) * 0.06 * z, sy - t * 0.45 * z);
@@ -238,7 +256,7 @@ export class WorldView {
     this.stampPool.begin();
     if (stamp) {
       for (const [x, y] of stamp.points) {
-        const v = cellHash(x, y) % variants;
+        const v = cellHash(x, y) % TEAM_BASE;
         const [sx, sy] = cam.toScreen(x + 0.5, y + 0.5);
         const s = this.stampPool.next(faces ? this.tx.faces[v].happy : this.tx.dots[v]);
         s.position.set(sx, sy);

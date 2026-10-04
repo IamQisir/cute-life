@@ -6,6 +6,24 @@ import { type Cells, buds, key, neighborCounts, step } from './life/engine';
 export interface Fading {
   k: number;
   t0: number;
+  /** Battle only: the team the cell belonged to, so it fades in the right colour. */
+  team?: 1 | 2;
+}
+
+/** What the renderer needs from a simulation (sandbox Sim or battle). */
+export interface SimView {
+  cells: Set<number>;
+  counts: Map<number, number>;
+  budKeys: number[];
+  bornAt: Map<number, number>;
+  fading: Fading[];
+  animMs: number;
+  version: number;
+  generation: number;
+  /** Battle only: which team a live cell belongs to. */
+  teamOf?(k: number): 1 | 2 | undefined;
+  /** False keeps cells as individuals at every zoom (no organism view). */
+  organisms?: boolean;
 }
 
 export class Sim {

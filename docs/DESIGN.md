@@ -22,7 +22,13 @@
   the music box audio and a handwritten watermark; the result popup offers
   save / copy link / post on X. No GIF on purpose: X converts GIFs to video,
   GIF's 256 colours ruin the pencil texture, and it has no sound
-- [ ] **M4 Red vs blue**: bounded toroidal arena, Immigration rule, turn-based vs AI
+- [x] **M4 Red vs blue**: simultaneous hidden deployment, then watch. 32x24
+  toroidal arena, 20 cells each, Immigration rule (newborns take the majority
+  colour of their 3 parents), 150 generations, more cells wins. Opponents: AI
+  (1-5 stars = how many candidate deployments it simulates) and challenge links
+  (async PvP with no server). Battles are deterministic, so replay links
+  reproduce any battle exactly. Organisms are off in battles (their colours
+  mean "kind of pattern", which would clash with team colours)
 - [ ] **M5 Art swap**: AI-generated body sprites (faceless) replace procedural bodies;
   faces stay procedural so expressions compose freely
 - [ ] **M6 Identity tracking**: match components across generations so creatures

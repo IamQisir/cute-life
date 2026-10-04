@@ -1,0 +1,36 @@
+# Continuous Integration: GitHub runs this on a fresh Linux machine for every
+# push to main and every pull request. If any step fails, the run turns red.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch cancels the run that is still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # 1. Download the repository's code onto the machine.
+      - uses: actions/checkout@v4
+
+      # 2. Install Node.js (same major version as local dev) and cache npm downloads.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # 3. Install exactly the versions pinned in package-lock.json.
+      - run: npm ci
+
+      # 4. Unit tests (vitest).
+      - run: npm test
+
+      # 5. Type-check and production build: the same thing Cloudflare will run.
+      - run: npm run build

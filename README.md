@@ -1,5 +1,7 @@
 # cute life
 
+[![CI](https://github.com/IamQisir/cute-life/actions/workflows/ci.yml/badge.svg)](https://github.com/IamQisir/cute-life/actions/workflows/ci.yml)
+
 A cosy, hand-drawn Game of Life on an infinite sheet of paper. Every cell has
 feelings, and its face tells you what happens next:
 

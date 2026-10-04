@@ -2,6 +2,7 @@ import { type Category, byCategory } from '../life/catalog';
 import { type Pattern, cellCount } from '../life/patterns';
 import type { SoundMode } from '../audio/musicBox';
 import { WorldView } from '../render/world';
+import { attachCornerCells } from './cornerCells';
 import { type CardHandlers, patternCard } from './patternCard';
 import { isPaletteHidden, paletteSection, setPaletteHidden } from './paletteSections';
 import { type StampEntry, type StampSectionActions, stampSection } from './stamps';
@@ -10,6 +11,8 @@ import { type StampEntry, type StampSectionActions, stampSection } from './stamp
 const OPEN_BY_DEFAULT = new Set<Category>(['spaceship', 'gun', 'oscillator']);
 
 export interface HudActions {
+  openHelp(): void;
+  wakeCell(index: number): void;
   togglePlay(): void;
   step(): void;
   shuffle(): void;
@@ -70,6 +73,7 @@ export class Hud {
   private selectBtn: HTMLButtonElement;
   private followBtn: HTMLButtonElement;
   private picked: Pattern | null = null;
+  private cornerCells: ReturnType<typeof attachCornerCells>;
 
   constructor(root: HTMLElement, a: HudActions) {
     this.root = root;
@@ -144,6 +148,7 @@ export class Hud {
     });
 
     root.append(title, topRight, palette, this.hint, bottom, this.toastEl, ...sleepers);
+    this.cornerCells = attachCornerCells(title, sleepers, a);
   }
 
   setStatus(generation: number, population: number) {
@@ -199,6 +204,7 @@ export class Hud {
 
   /** Switch the HUD between the sandbox and battle layouts. */
   setMode(mode: 'sandbox' | 'battle') {
+    this.cornerCells.reset();
     this.root.classList.toggle('battle', mode === 'battle');
     this.battleBtn.textContent = mode === 'battle' ? 'sandbox' : 'battle!';
   }
@@ -244,6 +250,11 @@ export class Hud {
 
   dismissHint() {
     this.hint.classList.add('gone');
+  }
+
+  dispose() {
+    this.cornerCells.dispose();
+    clearTimeout(this.toastTimer);
   }
 
   toast(msg: string, ms = 2600) {

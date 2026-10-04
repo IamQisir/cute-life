@@ -1,0 +1,46 @@
+name: ✨ Feature / task
+description: A self-contained piece of work (also usable as a spec to hand to an AI agent)
+labels: [enhancement]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should be true when this is done, and why it matters.
+      placeholder: Mid-zoom organisms animate smoothly between generations instead of jumping.
+    validations:
+      required: true
+  - type: dropdown
+    id: milestone
+    attributes:
+      label: Roadmap milestone
+      description: See docs/DESIGN.md
+      options:
+        - M4 Red vs blue
+        - M5 Art swap
+        - M6 Identity tracking
+        - Polish / other
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Files or modules involved, and what must NOT be touched.
+      placeholder: |
+        - Edit: src/render/organisms.ts
+        - Don't touch: src/life/*
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints / notes
+      description: Design decisions, performance limits, style to match.
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: Concrete, checkable criteria.
+      value: |
+        - [ ] `npm test` passes
+        - [ ] `npm run build` passes
+        - [ ]
+    validations:
+      required: true

@@ -1,0 +1,2 @@
+# Templates are a convenience, not a requirement: blank issues stay allowed.
+blank_issues_enabled: true

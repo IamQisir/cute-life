@@ -368,7 +368,6 @@ async function main() {
     random: () => battle.randomArmy(performance.now()),
     clear: () => battle.clearArmy(performance.now()),
     setStars: (s) => battle.setStars(s),
-    setSize: (size) => battle.setSize(size, performance.now()),
     challenge(name) {
       const link = battle.challengeLink(name.trim() || undefined);
       if (link) copyText(link, 'challenge link copied! send it to a friend ~');
@@ -390,7 +389,6 @@ async function main() {
     togglePause: () => battle.togglePause(),
     finishNow: () => battle.finishNow(performance.now()),
     setSpeed: (v) => (battle.genPerSec = v),
-    toggleView: () => battle.toggleView(),
     cards: cardDrag,
   });
   battleHud.show(false);
@@ -417,6 +415,7 @@ async function main() {
     framedPhase = battle.phase;
     const a = battleHud.freeArea(cam.w, cam.h);
     cam.zoom = Math.max(4, Math.min((a.right - a.left) / width, (a.bottom - a.top) / height));
+    battle.sim.fitZoom = cam.zoom;
     const cx = (a.left + a.right) / 2;
     const cy = (a.top + a.bottom) / 2;
     cam.x = width / 2 - (cx - cam.w / 2) / cam.zoom;

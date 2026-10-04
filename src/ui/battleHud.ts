@@ -4,7 +4,6 @@
 // Pure DOM; BattleMode owns the state, main.ts wires actions.
 
 import type { Stars } from '../battle/ai';
-import { ARENA_SIZES, type ArenaSize } from '../battle/arena';
 import type { BattleMode } from '../battle/mode';
 import { BATTLE_PATTERN_NAMES, PATTERNS, type Pattern, cellCount } from '../life/patterns';
 import { WorldView } from '../render/world';
@@ -15,7 +14,6 @@ export interface BattleActions {
   random(): void;
   clear(): void;
   setStars(stars: Stars): void;
-  setSize(size: ArenaSize): void;
   challenge(name: string): void;
   editArmy(): void;
   replay(): void;
@@ -26,7 +24,6 @@ export interface BattleActions {
   togglePause(): void;
   finishNow(): void;
   setSpeed(genPerSec: number): void;
-  toggleView(): void;
   /** Palette cards: click to select a stamp, or drag onto the arena. */
   cards: CardHandlers;
 }
@@ -144,7 +141,7 @@ export class BattleHud {
 
     this.renderPalette(b);
 
-    const key = `${b.phase}|${o.kind}|${o.kind === 'ai' ? o.stars : ''}|${b.paused}|${b.army.length > 0}|${b.myTeam}|${b.size}|${b.viewCreatures}`;
+    const key = `${b.phase}|${o.kind}|${o.kind === 'ai' ? o.stars : ''}|${b.paused}|${b.army.length > 0}|${b.myTeam}|${b.size}`;
     if (key !== this.lastKey) {
       this.lastKey = key;
       this.buildControls(b);
@@ -169,17 +166,6 @@ export class BattleHud {
     if (deploying) for (const [p, card] of this.cards) card.classList.toggle('off', cellCount(p) > b.budgetLeft);
   }
 
-  /** creatures | cells switch for watching the battle. */
-  private viewToggle(b: BattleMode): HTMLElement {
-    const g = el('div', 'side-group view-toggle');
-    g.append(el('div', 'label', 'watch as'));
-    g.append(
-      button('creatures', () => !b.viewCreatures && this.a.toggleView(), b.viewCreatures ? 'on' : ''),
-      button('cells', () => b.viewCreatures && this.a.toggleView(), b.viewCreatures ? '' : 'on'),
-    );
-    return g;
-  }
-
   private buildControls(b: BattleMode) {
     const o = b.opponent;
     this.side.replaceChildren();
@@ -188,9 +174,6 @@ export class BattleHud {
 
     if (b.phase === 'deploy') {
       if (o.kind === 'ai') {
-        const sizes = el('div', 'side-group sizes');
-        sizes.append(el('div', 'label', 'arena'));
-        for (const size of ARENA_SIZES) sizes.append(button(size, () => this.a.setSize(size), size === b.size ? 'on' : ''));
         const stars = el('div', 'stars');
         stars.title = 'AI difficulty';
         for (let i = 1; i <= 5; i++) {
@@ -200,7 +183,7 @@ export class BattleHud {
         }
         const ai = el('div', 'side-group');
         ai.append(el('div', 'label', 'AI'), stars);
-        this.side.append(sizes, ai);
+        this.side.append(ai);
       }
       const go = el('div', 'side-group');
       go.append(button('ready!', this.a.ready, 'big'), button('random', this.a.random), button('clear', this.a.clear));
@@ -224,7 +207,7 @@ export class BattleHud {
       speed.append(el('span', '', 'slow'), slider, el('span', '', 'fast'));
       const g = el('div', 'side-group');
       g.append(button(b.paused ? 'resume' : 'pause', this.a.togglePause), speed, button('skip to end', this.a.finishNow));
-      this.side.append(g, this.viewToggle(b));
+      this.side.append(g, el('div', 'side-hint', 'scroll to zoom in on the cells'));
       return;
     }
 
@@ -255,7 +238,6 @@ export class BattleHud {
       if (o.kind === 'challenge') actions.append(button('play the AI', this.a.vsAi));
       this.card.append(h, score, detail, actions);
       this.card.style.display = '';
-      this.side.append(this.viewToggle(b));
     }
   }
 }

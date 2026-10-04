@@ -31,8 +31,10 @@ export class BattleSim implements SimView {
   version = 0;
   generation = 0;
   readonly organisms = false;
-  /** Set by BattleMode: show team creatures (reveal, battle, result) or cells (deploying). */
-  creatures = false;
+  /** Set by BattleMode while watching: zoom thresholds for creatures vs cells. */
+  creatures: { lo: number; hi: number } | undefined = undefined;
+  /** The zoom the arena is framed at (set by main), so "zoom in for cells" is relative. */
+  fitZoom = 20;
   private clusterCache: { version: number; clusters: TeamCluster[] } | null = null;
   grid: Grid;
   /** Territory: which team last stood on each square. */

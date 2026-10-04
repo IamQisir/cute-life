@@ -25,8 +25,11 @@ export interface SimView {
   teamOf?(k: number): 1 | 2 | undefined;
   /** False keeps cells as individuals at every zoom (no organism view). */
   organisms?: boolean;
-  /** Battle: show team creatures instead of individual cells, at any zoom. */
-  creatures?: boolean;
+  /**
+   * Battle, while watching: zoom-based like the sandbox. At or below `lo`
+   * px/cell the view is all team creatures, at or above `hi` all cells.
+   */
+  creatures?: { lo: number; hi: number };
   /** Battle: same-team groups (never mixing colours), used for creatures. */
   teamClusters?(): TeamCluster[];
 }

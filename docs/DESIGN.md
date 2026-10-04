@@ -29,6 +29,11 @@
   (async PvP with no server). Battles are deterministic, so replay links
   reproduce any battle exactly. Organisms are off in battles (their colours
   mean "kind of pattern", which would clash with team colours)
+  - v3 (after playtesting): one 56x40 arena (smaller ones felt pointless; kept
+    only to replay old links). Central 10x10 garden is the only score; the
+    battle ends at the first extinction. While watching, same-team cells form
+    team-coloured creatures; zooming in crossfades to cells (thresholds are
+    relative to the framed zoom, 1.25x-1.6x). Links carry a rules version.
 - [ ] **M5 Art swap**: AI-generated body sprites (faceless) replace procedural bodies;
   faces stay procedural so expressions compose freely
 - [ ] **M6 Identity tracking**: match components across generations so creatures

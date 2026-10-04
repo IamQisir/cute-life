@@ -64,9 +64,10 @@ const FINALE_GEN_PER_SEC = 4;
 const MAX_STEPS_PER_FRAME = 4;
 
 export class BattleMode {
-  size: ArenaSize = 'small';
+  /** Battles against the AI use the large arena; smaller presets only replay old links. */
+  size: ArenaSize = 'large';
   rules: Rules = 'garden';
-  cfg: ArenaConfig = ARENA_PRESETS.small;
+  cfg: ArenaConfig = ARENA_PRESETS.large;
   sim = new BattleSim(this.cfg);
   phase: Phase = 'deploy';
   opponent: Opponent = { kind: 'ai', stars: 3 };
@@ -75,8 +76,7 @@ export class BattleMode {
   army: Pt[] = [];
   enemy: Pt[] = [];
   genPerSec = 8;
-  /** Watch the battle as team creatures (default) or as individual cells. */
-  viewCreatures = true;
+
   /** Recording: slow down for the last FINALE_GENERATIONS generations. */
   slowFinale = false;
   /** Generation the current battle will end on (it's deterministic, so we know in advance). */
@@ -124,7 +124,7 @@ export class BattleMode {
     this.opponent = opponent;
     // Challenges and replays bring their own arena size and rules; the AI uses current rules.
     const rules: Rules = opponent.kind === 'ai' ? 'garden' : opponent.rules;
-    const size = opponent.kind === 'ai' ? this.size : opponent.size;
+    const size = opponent.kind === 'ai' ? 'large' : opponent.size;
     if (rules !== this.rules || size !== this.size) this.applySize(size, rules);
     this.outcome = null;
     this.paused = false;
@@ -197,15 +197,6 @@ export class BattleMode {
     this.hooks.changed();
   }
 
-  /** Pick the arena size while deploying against the AI. Clears the army. */
-  setSize(size: ArenaSize, now: number) {
-    if (this.phase !== 'deploy' || this.opponent.kind !== 'ai' || size === this.size) return;
-    this.applySize(size, this.rules);
-    this.army = [];
-    this.sim.showArmy(this.myTeam, this.army, now);
-    this.hooks.changed();
-  }
-
   private applySize(size: ArenaSize, rules: Rules) {
     this.size = size;
     this.rules = rules;
@@ -264,14 +255,12 @@ export class BattleMode {
     this.finish(now);
   }
 
-  toggleView() {
-    this.viewCreatures = !this.viewCreatures;
-    this.hooks.changed();
-  }
-
   update(now: number) {
-    // Deploying is done cell by cell; watching defaults to creatures.
-    this.sim.creatures = this.viewCreatures && (this.phase === 'reveal' || this.phase === 'battle' || this.phase === 'result');
+    // Deploying is done cell by cell. While watching, the framed view shows
+    // team creatures and zooming in crossfades to cells, like the sandbox.
+    const watching = this.phase === 'reveal' || this.phase === 'battle' || this.phase === 'result';
+    const fit = this.sim.fitZoom;
+    this.sim.creatures = watching ? { lo: fit * 1.25, hi: fit * 1.6 } : undefined;
     this.sim.prune(now);
     if (this.phase === 'reveal' && now - this.phaseAt >= REVEAL_MS) {
       this.setPhase('battle', now);

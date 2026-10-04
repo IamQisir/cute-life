@@ -309,8 +309,12 @@ export function drawCell(palette: Palette, seed: number, mood: Mood | null): HTM
 }
 
 /** Just the face, on a transparent canvas: organisms wear these. */
-export function drawFaceOnly(palette: Palette, mood: Mood): HTMLCanvasElement {
-  const [canvas, ctx] = newCanvas();
+export function drawFaceOnly(palette: Palette, mood: Mood, res = 1): HTMLCanvasElement {
+  // `res` draws at a higher resolution for faces shown large (organisms).
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = TEX_SIZE * res;
+  const ctx = canvas.getContext('2d')!;
+  ctx.scale(res, res);
   drawFace(ctx, palette, mood);
   return canvas;
 }

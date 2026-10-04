@@ -28,9 +28,12 @@ npm test
 npm run build
 ```
 
-Battle: press **battle!**, secretly deploy 20 red cells, then watch them fight
-a blue army for 150 generations. Play the AI (1-5 stars), send a **challenge
-link** to a friend, or share a **replay link** of any battle.
+Battle: press **battle!**, secretly deploy 50 red cells (drag structures from
+the palette), then watch your creatures fight a blue army on a 56×40 arena.
+Grow into the central garden: whoever colours more flowers wins, and the battle
+ends as soon as one side wilts. Zoom in to see the individual cells. Play the
+AI (1-5 stars), send a **challenge link** to a friend, or share a **replay
+link** of any battle.
 
 Share: **share** copies a link that reopens your exact scene; **record**
 saves a short MP4 (with sound and a watermark) ready to post.

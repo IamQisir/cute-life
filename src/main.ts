@@ -139,7 +139,7 @@ async function main() {
   const welcome = new WelcomeShow({
     sim, cam, playing: () => playing, following: () => following,
     setPlaying, setFollowing, refreshStatus,
-  });
+  }, { stage: app.stage, view, audio, soundChanged: () => hud.setSound(audio.mode) });
   const onboarding = new Onboarding(() => mode, welcome);
 
   /** Shared entry point for the help button and the future title-cell action. */
@@ -831,7 +831,9 @@ async function main() {
     if (welcome.active) {
       welcome.update(t);
       selectionGfx.clear();
-      view.update(t, sim, cam, null, true);
+      territoryView.update(cam, null);
+      arenaView.update(cam, null, { showZones: [] });
+      view.update(welcome.renderTime(t), sim, cam, null, true);
       return;
     }
     if (playing && t - lastStep >= 1000 / genPerSec) {

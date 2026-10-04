@@ -35,6 +35,7 @@ export class Onboarding {
   private step = 0;
   private touring = false;
   private forceRules = false;
+  private rememberSeen = true;
   private returnFocus: HTMLElement | null = null;
   private backgrounds: { node: HTMLElement; inert: boolean }[] = [];
 
@@ -83,7 +84,23 @@ export class Onboarding {
   }
 
   openHelp() {
-    if (!this.overlay && !this.welcome.active) this.openTour(true);
+    if (this.overlay || this.welcome.active) return;
+    this.mount();
+    this.spotlight.hidden = true;
+    this.overlay!.classList.add('onboarding-rules', 'onboarding-help');
+    this.note.style.cssText = '';
+    const actions = element('div', 'onboarding-actions');
+    const tour = button('show me around', () => {
+      this.unmount();
+      this.openTour(true);
+    });
+    actions.append(tour, button('watch the intro again', () => {
+      this.unmount();
+      // Keep replay and its optional tour/rules from changing first-visit flags.
+      this.welcome.start((tour) => { if (tour) this.openTour(true, false); });
+    }), button('back to my world', () => this.unmount()));
+    this.note.replaceChildren(this.heading('a little help ~'), actions);
+    tour.focus();
   }
 
   /** Both the play button and Space use this hook; link visits stay unobstructed. */
@@ -118,11 +135,12 @@ export class Onboarding {
     return heading;
   }
 
-  private openTour(forceRules: boolean) {
+  private openTour(forceRules: boolean, rememberSeen = true) {
+    this.rememberSeen = rememberSeen;
     this.forceRules = forceRules;
     this.touring = true;
     this.step = 0;
-    this.seen.tourSeen();
+    if (this.rememberSeen) this.seen.tourSeen();
     this.mount();
     this.renderStep();
   }
@@ -210,7 +228,7 @@ export class Onboarding {
   private openRules() {
     this.touring = false;
     this.forceRules = false;
-    this.seen.rulesSeen(this.currentMode());
+    if (this.rememberSeen) this.seen.rulesSeen(this.currentMode());
     if (!this.overlay) this.mount();
     this.overlay!.classList.add('onboarding-rules');
     this.note.style.cssText = '';
@@ -238,9 +256,14 @@ export class Onboarding {
       this.openRules();
       return;
     }
+    this.unmount();
+  }
+
+  private unmount() {
     this.overlay?.remove();
     this.overlay = null;
     this.touring = false;
+    this.rememberSeen = true;
     this.backgrounds.forEach(({ node, inert }) => { node.inert = inert; });
     if (this.returnFocus?.isConnected) this.returnFocus.focus();
   }

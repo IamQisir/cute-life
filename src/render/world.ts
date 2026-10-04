@@ -72,25 +72,33 @@ export class WorldView {
   private cellPool: SpritePool;
   private fadePool: SpritePool;
   private stampPool: SpritePool;
-  private tx = buildTextures();
+  private tx: Textures;
   private gridSig = '';
   private cellsRoot = new Container();
   /** Drawn above the grid and below cells (e.g. the battle arena). */
   readonly underlay = new Container();
-  private organisms = new OrganismView();
+  private organisms: OrganismView | null;
 
-  constructor() {
-    this.paper = new TilingSprite({ texture: tex(drawPaper()), width: 1, height: 1 });
+  /** A close-up reuses artwork and omits the unused organism renderer. */
+  constructor(closeUpSource?: WorldView) {
+    this.tx = closeUpSource?.tx ?? buildTextures();
+    this.organisms = closeUpSource ? null : new OrganismView();
+    this.paper = new TilingSprite({ texture: closeUpSource?.paper.texture ?? tex(drawPaper()), width: 1, height: 1 });
     const budLayer = new Container();
     const cellLayer = new Container();
     const fadeLayer = new Container();
     const stampLayer = new Container();
     this.cellsRoot.addChild(budLayer, fadeLayer, cellLayer);
-    this.root.addChild(this.paper, this.creases, this.grid, this.underlay, this.organisms.root, this.cellsRoot, stampLayer);
+    this.root.addChild(this.paper, this.creases, this.grid, this.underlay, ...(this.organisms ? [this.organisms.root] : []), this.cellsRoot, stampLayer);
     this.budPool = new SpritePool(budLayer);
     this.cellPool = new SpritePool(cellLayer);
     this.fadePool = new SpritePool(fadeLayer);
     this.stampPool = new SpritePool(stampLayer);
+  }
+
+  /** Shared artwork survives; only this view's containers/sprites/graphics die. */
+  destroy() {
+    this.root.destroy({ children: true, context: true });
   }
 
   /** Canvas of a happy cell, for use in the DOM (icons, decorations). */
@@ -159,7 +167,7 @@ export class WorldView {
     g.stroke({ width: 1.4, color: 0x8a7d6c, alpha: 0.34 * alpha });
   }
 
-  update(now: number, sim: SimView, cam: Camera, stamp: StampPreview | null, showBuds: boolean) {
+  update(now: number, sim: SimView, cam: Camera, stamp: StampPreview | null, showBuds: boolean, viewport?: { left: number; top: number; right: number; bottom: number }) {
     this.paper.tilePosition.set(-cam.x * cam.zoom, -cam.y * cam.zoom);
     this.drawGrid(cam);
 
@@ -178,11 +186,13 @@ export class WorldView {
     this.cellsRoot.alpha = cellAlpha;
     this.cellsRoot.visible = cellAlpha > 0;
     const orgAlpha = creatures ? 1 - cellAlpha : individuals || dots ? 0 : 1 - cellAlpha;
-    this.organisms.root.visible = orgAlpha > 0;
-    this.organisms.root.alpha = orgAlpha;
-    if (orgAlpha > 0) this.organisms.update(now, sim, cam);
-    const [wx0, wy0] = cam.toWorld(-z, -z);
-    const [wx1, wy1] = cam.toWorld(cam.w + z, cam.h + z);
+    if (this.organisms) {
+      this.organisms.root.visible = orgAlpha > 0;
+      this.organisms.root.alpha = orgAlpha;
+      if (orgAlpha > 0) this.organisms.update(now, sim, cam);
+    }
+    const [wx0, wy0] = cam.toWorld((viewport?.left ?? 0) - z, (viewport?.top ?? 0) - z);
+    const [wx1, wy1] = cam.toWorld((viewport?.right ?? cam.w) + z, (viewport?.bottom ?? cam.h) + z);
     const inView = (x: number, y: number) => x >= wx0 && x <= wx1 && y >= wy0 && y <= wy1;
     // Dots never shrink below ~4 px, or far-away cells vanish into the paper.
     const scale = faces ? (1.3 * z) / TEX_SIZE : Math.max(z, 4.5) / TEX_SIZE;

@@ -1,10 +1,16 @@
 import { CATALOG } from '../life/catalog';
-import { fromList, step, type Cells } from '../life/engine';
+import { fromList, step, toList, type Cells } from '../life/engine';
 import { placePattern } from '../life/patterns';
 
 export const WELCOME_CELL_CAP = 4000;
 export const WELCOME_PRE_ADVANCE = 120;
 export const WELCOME_GEN_PER_SEC = 8;
+
+/** Local warmup staggers the two period-30 emitters into a gentle rhythm. */
+export const SHOWCASE_GUNS = [
+  { x: -70, y: -35, period: 30, phase: 0 },
+  { x: 65, y: -65, period: 30, phase: 15 },
+] as const;
 
 /** Separated lanes keep emitters, wakes and blooming seeds from colliding. */
 export const SHOWCASE_STAMPS: readonly [string, number, number][] = [
@@ -22,7 +28,10 @@ export function showcaseSeed(): Cells {
   return fromList(SHOWCASE_STAMPS.flatMap(([id, x, y]) => {
     const pattern = CATALOG.find((entry) => entry.id === id);
     if (!pattern) throw new Error(`Missing showcase pattern: ${id}`);
-    return placePattern(pattern, x, y);
+    let cells = fromList(placePattern(pattern, x, y));
+    const phase = SHOWCASE_GUNS.find((gun) => gun.x === x && gun.y === y)?.phase ?? 0;
+    for (let i = 0; i < phase; i++) cells = step(cells);
+    return toList(cells);
   }));
 }
 

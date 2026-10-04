@@ -40,3 +40,4 @@
   .onboarding-note { width: calc(100vw - 24px); padding: 14px; font-size: 18px; }
   .onboarding-title { font-size: 29px; }
 }
+.onboarding-help .onboarding-actions { flex-direction: column; align-items: stretch; }

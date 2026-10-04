@@ -1,3 +1,7 @@
+// Self-hosted handwriting fonts (bundled into /assets, no Google Fonts request).
+import '@fontsource/caveat/500.css';
+import '@fontsource/caveat/700.css';
+import '@fontsource/patrick-hand/400.css';
 import { Application, UPDATE_PRIORITY } from 'pixi.js';
 import { MusicBox } from './audio/musicBox';
 import { attachInput } from './input';

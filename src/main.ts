@@ -96,6 +96,15 @@ async function main() {
   };
 
   const hud = new Hud(document.getElementById('hud')!, {
+    openHelp() {
+      // #25 will replace this with the tour + rules card
+      hud.toast('click to draw ~ space to play ~ scroll to zoom ~ right-drag to move', 6000);
+    },
+    wakeCell(index) {
+      if (audio.mode !== 'all') return;
+      audio.unlock();
+      audio.pop(index + 1, 0);
+    },
     togglePlay,
     step: stepOnce,
     shuffle,
@@ -144,6 +153,8 @@ async function main() {
       if (p) hud.toast('click to place ~ R rotates ~ shift+click keeps stamping');
     },
   });
+
+  import.meta.hot?.dispose(() => hud.dispose());
 
   function refreshStatus() {
     hud.setStatus(sim.generation, sim.population);

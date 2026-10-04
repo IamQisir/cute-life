@@ -8,6 +8,7 @@ import { fromChallengeHash, fromReplayHash } from './battle/challenge';
 import { BattleMode, type Opponent } from './battle/mode';
 import { attachInput } from './input';
 import { key, keyX, keyY, toList } from './life/engine';
+import { introPoints, pickIntroPicture } from './life/introArt';
 import {
   Library,
   type StampStorage,
@@ -18,10 +19,12 @@ import {
   rowsFromPoints,
   toStampHash,
 } from './life/library';
-import { PATTERNS, type Pattern, placePattern } from './life/patterns';
+import { type Pattern, placePattern } from './life/patterns';
 import { ArenaView } from './render/arenaView';
 import { Camera } from './render/camera';
 import { type FollowTarget, followTarget } from './render/follow';
+import { createFollowState, updateFollow } from './render/followController';
+import { pointBounds, shouldFrameStamp } from './render/framing';
 import { TerritoryView } from './render/territoryView';
 import { WorldView } from './render/world';
 import { fromHash, toHash } from './share/link';
@@ -38,6 +41,7 @@ const MAX_RECORD_SECONDS = 15;
 const MAX_BATTLE_RECORD_SECONDS = 60;
 const RECORD_GEN_PER_SEC = 8;
 const RESULT_HOLD_MS = 2000;
+const MANUAL_CAMERA_GRACE_MS = 400;
 /** Links longer than this still work, but some apps truncate them. */
 const LONG_LINK = 8000;
 const POST_TEXT = 'my little cells are growing 🌱 #cutelife #GameOfLife';
@@ -70,14 +74,20 @@ async function main() {
   let started = false;
   let lastPopAt = 0;
   let mode: 'sandbox' | 'battle' = 'sandbox';
+  let battleStarted = false;
   let sandboxCam = { x: 0, y: 0, zoom: 40 };
   let recordingReplay = false;
   let selecting = false;
   /** The camera keeps the body of the population in view until the player takes over. */
   let following = true;
-  let followAim: FollowTarget | null = null;
-  let followFrame = 0;
+  let followState = createFollowState();
   let followHinted = false;
+  let introShown = false;
+  /** A one-off stamp glide, independent of the player's follow setting. */
+  let stampAim: FollowTarget | null = null;
+  let lastManualCamera = -Infinity;
+  /** null outside sandbox recording; otherwise the setting to restore. */
+  let recordedFollowing: boolean | null = null;
   /** Selection box in cells (inclusive), while the select tool is in use. */
   let selection: { x0: number; y0: number; x1: number; y1: number } | null = null;
 
@@ -99,6 +109,9 @@ async function main() {
     step: stepOnce,
     shuffle,
     clear() {
+      introShown = false;
+      stampAim = null;
+      followState = createFollowState();
       sim.clear(performance.now());
       forgetSharedLink();
       setPlaying(false);
@@ -118,8 +131,9 @@ async function main() {
       if (mode === 'battle') shareReplay();
       else copyLink();
     },
-    toggleBattle() {
-      if (mode === 'battle') exitBattle();
+    setMode(nextMode) {
+      if (nextMode === mode) return;
+      if (nextMode === 'sandbox') exitBattle();
       else enterBattle();
     },
     cardDrag: {
@@ -128,11 +142,11 @@ async function main() {
       drop: (p, x, y) => cardDrag.drop(p, x, y),
     },
     toggleFollow() {
-      setFollowing(!following);
+      if (recordedFollowing === null) setFollowing(!following);
     },
     toggleSelect() {
       setSelecting(!selecting);
-      if (selecting) hud.toast('drag a box around some cells to save them as a stamp');
+      if (selecting) hud.toast('drag a box to save a stamp ~ settings → select turns it off');
     },
     pickPattern(p) {
       selectPattern(p);
@@ -163,7 +177,9 @@ async function main() {
   }
 
   function advance() {
+    observeFollow();
     const born = sim.advance(performance.now());
+    observeFollow();
     audio.births(born.map((k) => [keyX(k), keyY(k)]));
     refreshStatus();
     if (sim.population > POPULATION_CAP) {
@@ -183,6 +199,7 @@ async function main() {
 
   function shuffle() {
     audio.unlock();
+    clearIntro(performance.now());
     // Sprinkle a random soup over the middle of the view.
     const w = Math.min(60, Math.floor(cam.w / cam.zoom * 0.6));
     const h = Math.min(40, Math.floor(cam.h / cam.zoom * 0.6));
@@ -195,8 +212,17 @@ async function main() {
       }
     }
     sim.addMany(pts, performance.now());
+    followState = createFollowState();
     forgetSharedLink();
     refreshStatus();
+  }
+
+  function clearIntro(now: number) {
+    if (!introShown) return;
+    introShown = false;
+    // Sim.clear reuses the renderer's drifting/dissolving death animation.
+    sim.clear(now);
+    followState = createFollowState();
   }
 
   function stampPoints(x: number, y: number): [number, number][] {
@@ -223,7 +249,19 @@ async function main() {
       else if (problem === 'budget') hud.toast('not enough cells left for that one');
       else audio.pop(x, y);
     } else {
-      sim.addMany(pts, performance.now());
+      const now = performance.now();
+      clearIntro(now);
+      sim.addMany(pts, now);
+      stampAim = null;
+      followState = createFollowState();
+      const bounds = pointBounds(pts);
+      const [left, top] = cam.toWorld(0, 0);
+      const [right, bottom] = cam.toWorld(cam.w, cam.h);
+      // Shift+click keeps stamping: hold the camera still for a run of stamps.
+      if (bounds && !keep && now - lastManualCamera >= MANUAL_CAMERA_GRACE_MS && recordedFollowing === null
+        && shouldFrameStamp(bounds, { left, top, right, bottom })) {
+        stampAim = cameraTarget(pts.map(([px, py]) => key(px, py)), false);
+      }
       forgetSharedLink();
       audio.pop(x, y);
       refreshStatus();
@@ -322,6 +360,7 @@ async function main() {
   }
 
   function onRecorded(r: Recording) {
+    restoreRecordedFollow();
     hud.setRecording(null, MAX_RECORD_SECONDS);
     shownSecond = -1;
     if (recordingReplay) {
@@ -352,6 +391,7 @@ async function main() {
   function toggleRecord() {
     if (recorder.recording) {
       recorder.stop();
+      restoreRecordedFollow();
       return;
     }
     audio.unlock();
@@ -360,8 +400,23 @@ async function main() {
       hud.toast("sorry, this browser can't record video");
       return;
     }
+    if (mode === 'sandbox') {
+      recordedFollowing = following;
+      setFollowing(true);
+      stampAim = null;
+      lastManualCamera = -Infinity;
+      observeFollow();
+      if (followState.aim) Object.assign(cam, offsetAim(followState.aim));
+    }
     if (mode === 'sandbox' && !playing && sim.population > 0) setPlaying(true);
     hud.setRecording(0, MAX_RECORD_SECONDS);
+  }
+
+  function restoreRecordedFollow() {
+    if (recordedFollowing === null) return;
+    const previous = recordedFollowing;
+    recordedFollowing = null;
+    setFollowing(previous);
   }
 
   async function copyText(text: string, ok: string) {
@@ -468,6 +523,7 @@ async function main() {
 
   function enterBattle(opponent?: Opponent) {
     const t = performance.now();
+    stampAim = null;
     if (mode === 'sandbox') {
       sandboxCam = { x: cam.x, y: cam.y, zoom: cam.zoom };
       setPlaying(false);
@@ -479,7 +535,14 @@ async function main() {
     battleHud.show(true);
     framedPhase = '';
     const keepStars = battle.opponent.kind === 'ai' ? battle.opponent.stars : 3;
-    battle.start(opponent ?? { kind: 'ai', stars: keepStars }, t);
+    // Coming back from the sandbox resumes an unfinished battle; a finished one starts afresh.
+    if (opponent || !battleStarted || battle.phase === 'result') {
+      battleStarted = true;
+      battle.start(opponent ?? { kind: 'ai', stars: keepStars }, t);
+    } else {
+      syncPalette();
+      fitArena();
+    }
   }
 
   function exitBattle() {
@@ -642,25 +705,69 @@ async function main() {
   }
 
   function setFollowing(on: boolean) {
+    if (following !== on) followState = createFollowState();
     following = on;
-    followAim = null;
     hud.setFollow(on);
   }
 
-  /** Glide the camera toward the population's body (sandbox only). */
+  function followViewport() {
+    // The mobile palette is a bottom strip; desktop leaves space on the left.
+    const narrow = cam.w <= 720;
+    return { width: Math.max(1, cam.w - (narrow ? 40 : 260)),
+      height: Math.max(1, cam.h - (narrow ? 300 : 200)),
+      offsetX: narrow ? 0 : 110, offsetY: narrow ? 70 : 30 };
+  }
+
+  function offsetAim(aim: FollowTarget): FollowTarget {
+    const { offsetX, offsetY } = followViewport();
+    return { x: aim.x - offsetX / aim.zoom, y: aim.y + offsetY / aim.zoom, zoom: aim.zoom };
+  }
+
+  function cameraTarget(cells: Iterable<number>, bodyOnly = true): FollowTarget | null {
+    const { width, height } = followViewport();
+    const aim = followTarget(cells, width, height, 6, bodyOnly);
+    return aim ? offsetAim(aim) : null;
+  }
+
+  function observeFollow() {
+    if (!following || mode !== 'sandbox') return;
+    const { width, height } = followViewport();
+    followState = updateFollow(followState, sim.cells, sim.generation, width, height);
+  }
+
+  /** Continue following from an already framed stamp or restored camera. */
+  function holdCameraAim() {
+    const { offsetX, offsetY } = followViewport();
+    followState = createFollowState({ x: cam.x + offsetX / cam.zoom,
+      y: cam.y - offsetY / cam.zoom, zoom: cam.zoom });
+  }
+
+  function glideCamera(aim: FollowTarget, k: number) {
+    cam.x += (aim.x - cam.x) * k;
+    cam.y += (aim.y - cam.y) * k;
+    cam.zoom += (aim.zoom - cam.zoom) * k;
+    if (Math.hypot(aim.x - cam.x, aim.y - cam.y) * cam.zoom < 0.1
+      && Math.abs(aim.zoom - cam.zoom) < aim.zoom * 0.0001) Object.assign(cam, aim);
+  }
+
+  /** Stamp glides also run while paused; population follow runs while playing/recording. */
   function followStep() {
-    if (!following || mode !== 'sandbox' || sim.population === 0) return;
-    if (followFrame++ % 10 === 0 || !followAim) {
-      // Leave room for the palette on the left and the controls at the bottom.
-      followAim = followTarget(sim.cells, Math.max(200, cam.w - 260), Math.max(200, cam.h - 200));
+    if (mode !== 'sandbox' || performance.now() - lastManualCamera < MANUAL_CAMERA_GRACE_MS) return;
+    if (stampAim) {
+      glideCamera(stampAim, 0.06);
+      if (Math.hypot(stampAim.x - cam.x, stampAim.y - cam.y) * cam.zoom < 0.5
+        && Math.abs(stampAim.zoom - cam.zoom) < 0.05) {
+        Object.assign(cam, stampAim);
+        stampAim = null;
+        holdCameraAim();
+      }
+      return;
     }
-    if (!followAim) return;
-    const k = 0.06;
-    // Offset so the body sits in the middle of the free area (palette on the left).
-    const offsetX = 110 / followAim.zoom;
-    cam.x += (followAim.x - offsetX - cam.x) * k;
-    cam.y += (followAim.y + 30 / followAim.zoom - cam.y) * k;
-    cam.zoom += (followAim.zoom - cam.zoom) * k;
+    if (!following || (!playing && recordedFollowing === null) || sim.population === 0) return;
+    const recording = recordedFollowing !== null;
+    observeFollow();
+    if (!followState.aim) return;
+    glideCamera(offsetAim(followState.aim), recording ? 0.025 : 0.06);
   }
 
   function drawSelection() {
@@ -701,6 +808,11 @@ async function main() {
       }
       const v = value ?? !sim.has(x, y);
       if (sim.set(x, y, v, now)) {
+        // Drawing consumes the intro without clearing it, so later stamps
+        // cannot wipe out the player's own cells.
+        introShown = false;
+        stampAim = null;
+        followState = createFollowState();
         forgetSharedLink();
         if (now - lastPopAt > 90) {
           if (v) audio.pop(x, y);
@@ -762,7 +874,11 @@ async function main() {
       hover = c;
     },
     manualCamera() {
-      if (!following || mode !== 'sandbox') return;
+      if (mode !== 'sandbox') return;
+      stampAim = null;
+      followState = createFollowState();
+      lastManualCamera = performance.now();
+      if (!following || recordedFollowing !== null) return;
       setFollowing(false);
       if (!followHinted) {
         followHinted = true;
@@ -771,22 +887,15 @@ async function main() {
     },
   });
 
-  // A shared link restores its pattern; otherwise start with a few friends
-  // so the first screen already says hello.
+  // Parse every link before seeding: stamp/challenge/replay are handled later.
   const now = performance.now();
-  const byName = (n: string) => PATTERNS.find((p) => p.name === n)!;
   const shared = fromHash(location.hash);
+  const offered = fromStampHash(location.hash);
+  const challenge = fromChallengeHash(location.hash);
+  const replayLink = fromReplayHash(location.hash);
+  introShown = !shared && !offered && !challenge && !replayLink;
   if (shared) sim.addMany(shared.points, now);
-  else sim.addMany(
-    [
-      ...placePattern(byName('glider'), -6, -1),
-      ...placePattern(byName('blinker'), 5, -2),
-      ...placePattern(byName('beacon'), 1, 4),
-      [8, 3], [9, 3], [8, 4], [9, 4], // a sleepy block
-      [-9, 6],
-    ],
-    now,
-  );
+  else if (introShown) sim.addMany(introPoints(pickIntroPicture()), now);
   refreshStatus();
   hud.setSound(audio.mode);
   hud.setFollow(following);
@@ -799,10 +908,15 @@ async function main() {
     view.resize(cam.w, cam.h);
   };
   onResize();
+  if (introShown) {
+    observeFollow();
+    if (followState.aim) Object.assign(cam, offsetAim(followState.aim));
+  }
   if (shared?.cam) {
     cam.x = shared.cam.x;
     cam.y = shared.cam.y;
     cam.zoom = shared.cam.zoom;
+    holdCameraAim();
   }
   window.addEventListener('resize', () => {
     cam.w = app.screen.width;
@@ -832,8 +946,7 @@ async function main() {
     }
     territoryView.update(cam, null);
     arenaView.update(cam, null, { showZones: [] });
-    // Only while running: when paused the player is drawing and the view must hold still.
-    if (playing) followStep();
+    followStep();
     drawSelection();
     sim.prune(t);
     const stamp = pattern && hover ? { points: stampPoints(hover[0], hover[1]) } : null;
@@ -853,7 +966,6 @@ async function main() {
 
   refreshStamps();
   // A stamp link offers to add the stamp to "my stamps".
-  const offered = fromStampHash(location.hash);
   if (offered) {
     const p: Pattern = { name: offered.name || 'shared stamp', rows: offered.rows };
     openStampOffer(p, stampCell, () => addStamp(p.name, p.rows), () => {});
@@ -861,8 +973,6 @@ async function main() {
   }
 
   // Challenge and replay links open straight into a battle.
-  const challenge = fromChallengeHash(location.hash);
-  const replayLink = fromReplayHash(location.hash);
   if (challenge) {
     enterBattle({ kind: 'challenge', army: challenge.army, name: challenge.name, size: challenge.size ?? 'small', rules: challenge.rules ?? 'garden' });
     hud.toast(`${challenge.name || 'someone'} challenged you! deploy your blue army ~`, 5000);

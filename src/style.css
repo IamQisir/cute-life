@@ -76,6 +76,56 @@ html, body {
 .btn.on { background: #fde6b8; }
 .btn.big { font-size: 26px; padding: 4px 22px; color: var(--red); border-color: var(--red); }
 
+/* A little paper menu, anchored below the whole toolbar when its buttons wrap. */
+.mode-btn { white-space: nowrap; }
+.mode-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 6;
+  width: min(350px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  overflow-y: auto;
+  touch-action: pan-y;
+  background: #fffbef;
+  border: 2px solid var(--ink);
+  border-radius: var(--sketch);
+  box-shadow: 3px 4px 0 rgba(0, 0, 0, 0.08);
+}
+.mode-menu[hidden] { display: none; }
+.mode-card {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  background: #fffdf6;
+  border: 1.6px solid var(--ink-soft);
+  border-radius: var(--sketch-2);
+  cursor: pointer;
+}
+.mode-card:nth-child(even) { border-radius: var(--sketch); }
+.mode-card[aria-checked="true"] { background: #fde6b8; border-color: var(--ink); }
+.mode-card:hover:not(:disabled) { background: #fff6c9; }
+.mode-btn:focus-visible, .mode-card:focus-visible { outline: 2px dashed var(--blue); outline-offset: 3px; }
+.mode-card:disabled { color: var(--ink-soft); border-style: dashed; cursor: default; }
+.mode-copy { display: flex; flex-direction: column; min-width: 0; }
+.mode-name { font-family: 'Caveat', cursive; font-size: 27px; line-height: 1; }
+.mode-description { font-size: 16px; }
+.mode-soon { align-self: flex-start; margin-top: 3px; padding: 0 7px; font-size: 14px; background: var(--paper); border-radius: var(--sketch); }
+.mode-preview { display: flex; align-items: center; justify-content: center; flex: 0 0 64px; height: 54px; }
+.mode-preview canvas { width: 46px; height: 46px; }
+.mode-preview.battle canvas { width: 34px; height: 34px; }
+.mode-preview.battle canvas:first-child { transform: rotate(-10deg); }
+.mode-preview.battle canvas:last-child { transform: rotate(10deg); }
+
 .palette {
   position: absolute;
   left: 16px;
@@ -506,6 +556,7 @@ html, body {
   .card div { font-size: 14px; }
   .speed span { display: none; }
   .top-right { max-width: 62%; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+  .mode-menu { right: -6px; }
   .top-right .btn { font-size: 15px; padding: 2px 8px; }
   .hint { display: none; }
   .sleeper { display: none; }

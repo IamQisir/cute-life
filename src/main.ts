@@ -70,6 +70,7 @@ async function main() {
   let started = false;
   let lastPopAt = 0;
   let mode: 'sandbox' | 'battle' = 'sandbox';
+  let battleStarted = false;
   let sandboxCam = { x: 0, y: 0, zoom: 40 };
   let recordingReplay = false;
   let selecting = false;
@@ -109,8 +110,9 @@ async function main() {
       if (mode === 'battle') shareReplay();
       else copyLink();
     },
-    toggleBattle() {
-      if (mode === 'battle') exitBattle();
+    setMode(nextMode) {
+      if (nextMode === mode) return;
+      if (nextMode === 'sandbox') exitBattle();
       else enterBattle();
     },
     cardDrag: {
@@ -468,7 +470,14 @@ async function main() {
     battleHud.show(true);
     framedPhase = '';
     const keepStars = battle.opponent.kind === 'ai' ? battle.opponent.stars : 3;
-    battle.start(opponent ?? { kind: 'ai', stars: keepStars }, t);
+    // Coming back from the sandbox resumes an unfinished battle; a finished one starts afresh.
+    if (opponent || !battleStarted || battle.phase === 'result') {
+      battleStarted = true;
+      battle.start(opponent ?? { kind: 'ai', stars: keepStars }, t);
+    } else {
+      syncPalette();
+      fitArena();
+    }
   }
 
   function exitBattle() {

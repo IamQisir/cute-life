@@ -5,6 +5,7 @@ import { WorldView } from '../render/world';
 import { type CardHandlers, patternCard } from './patternCard';
 import { isPaletteHidden, paletteSection, setPaletteHidden } from './paletteSections';
 import { type StampEntry, type StampSectionActions, stampSection } from './stamps';
+import { MODES, type Mode, type PlayableMode } from './modes';
 
 /** Sections open until the player decides otherwise: the most fun to try first. */
 const OPEN_BY_DEFAULT = new Set<Category>(['spaceship', 'gun', 'oscillator']);
@@ -20,7 +21,7 @@ export interface HudActions {
   pickPattern(p: Pattern | null): void;
   toggleRecord(): void;
   share(): void;
-  toggleBattle(): void;
+  setMode(mode: PlayableMode): void;
   /** Drag-and-drop from palette cards onto the canvas. */
   cardDrag: CardHandlers;
   toggleSelect(): void;
@@ -55,7 +56,9 @@ export class Hud {
   private playBtn: HTMLButtonElement;
   private soundBtn: HTMLButtonElement;
   private recordBtn: HTMLButtonElement;
-  private battleBtn: HTMLButtonElement;
+  private modeBtn: HTMLButtonElement;
+  private modeMenu = el('div', 'mode-menu');
+  private modeCards = new Map<Mode, HTMLButtonElement>();
   private root: HTMLElement;
   private modal: HTMLElement | null = null;
   private handBtn: HTMLButtonElement;
@@ -85,8 +88,93 @@ export class Hud {
     this.selectBtn = button('select', a.toggleSelect, 'sandbox-only');
     this.followBtn = button('follow', a.toggleFollow, 'sandbox-only');
     this.recordBtn = button('record', a.toggleRecord, 'rec');
-    this.battleBtn = button('battle!', a.toggleBattle, 'battle-btn');
-    topRight.append(this.battleBtn, this.recordBtn, button('share', a.share), this.followBtn, this.selectBtn, this.handBtn, this.soundBtn);
+    this.modeBtn = el('button', 'btn mode-btn', 'sandbox ▾');
+    this.modeBtn.type = 'button';
+    this.modeBtn.setAttribute('aria-haspopup', 'menu');
+    this.modeBtn.setAttribute('aria-expanded', 'false');
+    this.modeBtn.setAttribute('aria-controls', 'mode-menu');
+    this.modeMenu.id = 'mode-menu';
+    this.modeMenu.hidden = true;
+    this.modeMenu.setAttribute('role', 'menu');
+    this.modeMenu.setAttribute('aria-label', 'choose a mode');
+    for (const option of MODES) {
+      const card = el('button', 'mode-card');
+      card.type = 'button';
+      card.setAttribute('role', 'menuitemradio');
+      card.setAttribute('aria-checked', String(option.id === 'sandbox'));
+      card.disabled = option.disabled;
+      card.setAttribute('aria-disabled', String(option.disabled));
+      const preview = el('span', `mode-preview ${option.id}`);
+      preview.setAttribute('aria-hidden', 'true');
+      if (option.id === 'sandbox') preview.append(WorldView.portrait('happy', 0));
+      else if (option.id === 'battle') preview.append(WorldView.teamPortrait(1), WorldView.teamPortrait(2));
+      else {
+        const crystal = el('canvas');
+        crystal.width = crystal.height = 54;
+        const ctx = crystal.getContext('2d')!;
+        ctx.fillStyle = '#d5c9ed';
+        ctx.strokeStyle = '#7a6a5c';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(26, 3); ctx.lineTo(43, 19); ctx.lineTo(38, 39);
+        ctx.lineTo(24, 51); ctx.lineTo(12, 35); ctx.lineTo(14, 17);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(26, 3); ctx.lineTo(22, 20); ctx.lineTo(24, 51);
+        ctx.moveTo(14, 17); ctx.lineTo(22, 20); ctx.lineTo(43, 19);
+        ctx.stroke();
+        preview.append(crystal);
+      }
+      const copy = el('span', 'mode-copy');
+      copy.append(el('span', 'mode-name', option.name), el('span', 'mode-description', option.description));
+      if (option.disabled) copy.append(el('span', 'mode-soon', 'coming soon'));
+      card.append(preview, copy);
+      card.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (option.disabled) return;
+        this.closeModeMenu(true);
+        a.setMode(option.id);
+      });
+      this.modeCards.set(option.id, card);
+      this.modeMenu.append(card);
+    }
+    this.modeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.modeMenu.hidden) this.openModeMenu();
+      else this.closeModeMenu(true);
+    });
+    // Keep both keydown and keyup (Space toggles play on release) away from game input.
+    const modeControls: HTMLElement[] = [this.modeBtn, this.modeMenu];
+    for (const control of modeControls) {
+      control.addEventListener('keyup', (e) => e.stopPropagation());
+      control.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          this.closeModeMenu(true);
+        } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (this.modeMenu.hidden) this.openModeMenu();
+          else {
+            const cards = [...this.modeCards.values()].filter((card) => !card.disabled);
+            const i = cards.indexOf(document.activeElement as HTMLButtonElement);
+            cards[(i + (e.key === 'ArrowDown' ? 1 : -1) + cards.length) % cards.length].focus();
+          }
+        }
+      });
+    }
+    topRight.addEventListener('focusout', (e) => {
+      if (!(e.relatedTarget instanceof Node) || (!this.modeMenu.contains(e.relatedTarget) && e.relatedTarget !== this.modeBtn)) {
+        this.closeModeMenu();
+      }
+    });
+    document.addEventListener('pointerdown', (e) => {
+      if (e.target instanceof Node && !this.modeMenu.contains(e.target) && !this.modeBtn.contains(e.target)) this.closeModeMenu();
+    });
+    window.addEventListener('resize', () => {
+      if (!this.modeMenu.hidden) this.closeModeMenu(true);
+    });
+    topRight.append(this.modeBtn, this.modeMenu, this.recordBtn, button('share', a.share), this.followBtn, this.selectBtn, this.handBtn, this.soundBtn);
 
     const palette = el('div', 'palette');
     this.palette = palette;
@@ -198,9 +286,25 @@ export class Hud {
   }
 
   /** Switch the HUD between the sandbox and battle layouts. */
-  setMode(mode: 'sandbox' | 'battle') {
+  setMode(mode: PlayableMode) {
     this.root.classList.toggle('battle', mode === 'battle');
-    this.battleBtn.textContent = mode === 'battle' ? 'sandbox' : 'battle!';
+    this.modeBtn.textContent = `${MODES.find((option) => option.id === mode)!.name} ▾`;
+    for (const [id, card] of this.modeCards) card.setAttribute('aria-checked', String(id === mode));
+    this.closeModeMenu();
+  }
+
+  private openModeMenu() {
+    this.modeMenu.hidden = false;
+    this.modeBtn.setAttribute('aria-expanded', 'true');
+    // Leave room below wrapped toolbar rows, even on short, narrow screens.
+    this.modeMenu.style.maxHeight = `${Math.max(0, window.innerHeight - this.modeMenu.getBoundingClientRect().top - 12)}px`;
+    this.modeMenu.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus();
+  }
+
+  private closeModeMenu(restoreFocus = false) {
+    this.modeMenu.hidden = true;
+    this.modeBtn.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) this.modeBtn.focus();
   }
 
   /** Seconds elapsed while recording, or null when idle. */

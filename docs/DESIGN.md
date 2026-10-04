@@ -38,6 +38,9 @@
   or import RLE / a stamp link; stamps live in localStorage (in-memory if
   unavailable), appear in both palettes (battle shows cost), and share as
   `#stamp=1&n=...&b=...` links. Limits: 400 cells, 64x64, 48 stamps
+- [ ] **Crystal Siege** (spec: [docs/specs/crystal-siege.md](specs/crystal-siege.md)):
+  a MOBA-like battle mode where guns, ships, methuselahs and eaters attack and
+  defend crystals; Life evolution unchanged, crystals only keep score
 - [ ] **M5 Art swap**: AI-generated body sprites (faceless) replace procedural bodies;
   faces stay procedural so expressions compose freely
 - [ ] **M6 Identity tracking**: match components across generations so creatures

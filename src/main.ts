@@ -11,6 +11,7 @@ import { keyX, keyY, toList } from './life/engine';
 import { PATTERNS, type Pattern, placePattern } from './life/patterns';
 import { ArenaView } from './render/arenaView';
 import { Camera } from './render/camera';
+import { TerritoryView } from './render/territoryView';
 import { WorldView } from './render/world';
 import { fromHash, toHash } from './share/link';
 import { Recorder, type Recording } from './share/recorder';
@@ -183,7 +184,7 @@ async function main() {
     ctx.fillStyle = '#7a6a5c';
     const status =
       mode === 'battle'
-        ? `red ${battle.sim.score.red} · blue ${battle.sim.score.blue} · generation ${battle.sim.generation}`
+        ? `territory red ${battle.sim.territory.red} · blue ${battle.sim.territory.blue} · generation ${battle.sim.generation}`
         : `generation ${sim.generation} · ${sim.population} cells`;
     ctx.fillText(status, pad, h - pad);
     ctx.restore();
@@ -279,11 +280,19 @@ async function main() {
 
   // ---- battle --------------------------------------------------------------
 
+  const territoryView = new TerritoryView();
   const arenaView = new ArenaView();
-  view.underlay.addChild(arenaView.root);
+  view.underlay.addChild(territoryView.root, arenaView.root);
+  let framedPhase = '';
   const battle = new BattleMode({
-    changed: () => battleHud.render(battle),
+    changed() {
+      // Deployment needs room for more controls below the arena than the battle does.
+      const deploying = battle.phase === 'deploy' || battle.phase === 'thinking';
+      if (mode === 'battle' && String(deploying) !== framedPhase) fitArena();
+      battleHud.render(battle);
+    },
     births: (pts) => audio.births(pts),
+    resized: () => fitArena(),
     finished(outcome) {
       battleHud.render(battle);
       audio.fanfare(outcome.youWon !== false);
@@ -301,6 +310,7 @@ async function main() {
     random: () => battle.randomArmy(performance.now()),
     clear: () => battle.clearArmy(performance.now()),
     setStars: (s) => battle.setStars(s),
+    setSize: (size) => battle.setSize(size, performance.now()),
     challenge(name) {
       const link = battle.challengeLink(name.trim() || undefined);
       if (link) copyText(link, 'challenge link copied! send it to a friend ~');
@@ -343,9 +353,12 @@ async function main() {
   /** Frame the arena between the battle title and the bottom controls. */
   function fitArena() {
     const { width, height } = battle.cfg;
-    // Room for title + scoreboard above, and stars + buttons + challenge row below.
+    // Room for title + scoreboard above; below, deployment has sizes, stars,
+    // buttons and the challenge row, while the battle only has one row.
+    const deploying = battle.phase === 'deploy' || battle.phase === 'thinking';
+    framedPhase = String(deploying);
     const top = cam.w < 720 ? 170 : 150;
-    const bottom = 170;
+    const bottom = deploying ? 210 : 90;
     cam.zoom = Math.max(6, Math.min((cam.w - 32) / width, (cam.h - top - bottom) / height));
     cam.x = width / 2;
     cam.y = height / 2 - (top - bottom) / 2 / cam.zoom;
@@ -510,10 +523,12 @@ async function main() {
     }
     if (mode === 'battle') {
       battle.update(t);
+      territoryView.update(cam, battle.sim);
       arenaView.update(cam, battle.layout(), battle.arenaState());
       view.update(t, battle.sim, cam, null, battle.phase === 'deploy');
       return;
     }
+    territoryView.update(cam, null);
     arenaView.update(cam, null, { showZones: [] });
     sim.prune(t);
     const stamp = pattern && hover ? { points: stampPoints(hover[0], hover[1]) } : null;
@@ -535,10 +550,10 @@ async function main() {
   const challenge = fromChallengeHash(location.hash);
   const replayLink = fromReplayHash(location.hash);
   if (challenge) {
-    enterBattle({ kind: 'challenge', army: challenge.army, name: challenge.name });
+    enterBattle({ kind: 'challenge', army: challenge.army, name: challenge.name, size: challenge.size ?? 'small' });
     hud.toast(`${challenge.name || 'someone'} challenged you! deploy your blue army ~`, 5000);
   } else if (replayLink) {
-    enterBattle({ kind: 'replay', red: replayLink.red, blue: replayLink.blue });
+    enterBattle({ kind: 'replay', red: replayLink.red, blue: replayLink.blue, size: replayLink.size ?? 'small' });
   }
 
   // ?play starts running immediately, ?zoom=N sets pixels per cell; handy for demos and screenshots.

@@ -92,8 +92,9 @@ function candidate(cfg: ArenaConfig, team: Team, random: Random, clumpsOnly = fa
     const y = compact
       ? Math.max(0, Math.min(cfg.height - maxY - 1, center[1] + integer(random, radius * 2 + 1) - radius))
       : integer(random, cfg.height - maxY);
-    // A glider near the outer edge can reach the enemy sooner through the seam.
-    const towardRight = x > (zone.x0 + zone.x1) / 2;
+    // With a horizontal seam, the outer edge can be the shortest enemy route.
+    // At walls, aim across the centre toward the enemy deployment zone.
+    const towardRight = cfg.wrapX ? x > (zone.x0 + zone.x1) / 2 : team === RED;
     const flipX = pattern === GLIDER ? (random() < 0.8 ? !towardRight : towardRight) : random() < 0.5;
     const flipY = random() < 0.5;
     const placed = pattern.map(([px, py]): Pt => {
@@ -104,14 +105,14 @@ function candidate(cfg: ArenaConfig, team: Team, random: Random, clumpsOnly = fa
     for (const [px, py] of placed) add(px, py);
   }
 
-  // Leftovers grow beside existing cells, with vertical wrapping on the torus.
+  // Leftovers grow beside existing cells, respecting the configured vertical edge.
   for (let tries = 0; tries < cfg.budget * 32 + 32 && points.length < cfg.budget; tries++) {
     if (!points.length) {
       add(center[0], center[1]);
     } else {
       const [x, y] = points[integer(random, points.length)];
       const [dx, dy] = DIRECTIONS[integer(random, 4)];
-      add(x + dx, (y + dy + cfg.height) % cfg.height);
+      add(x + dx, cfg.wrapY ? (y + dy + cfg.height) % cfg.height : y + dy);
     }
   }
   // Guaranteed termination for narrow zones and near-capacity deployments.
@@ -151,7 +152,9 @@ export function chooseDeployment(
       const result = team === RED
         ? simulateBattle(cfg, points, opponent)
         : simulateBattle(cfg, opponent, points);
-      total += team === RED ? result.red - result.blue : result.blue - result.red;
+      total += team === RED
+        ? result.territory.red - result.territory.blue
+        : result.territory.blue - result.territory.red;
     }
     return total / opponents.length;
   };
@@ -170,7 +173,8 @@ export function chooseDeployment(
       const points = best.slice();
       if (random() < 0.75) {
         const [dx, dy] = DIRECTIONS[integer(random, 4)];
-        points[move] = [best[move][0] + dx, (best[move][1] + dy + cfg.height) % cfg.height];
+        const y = best[move][1] + dy;
+        points[move] = [best[move][0] + dx, cfg.wrapY ? (y + cfg.height) % cfg.height : y];
       } else {
         points[move] = [zone.x0 + integer(random, zone.x1 - zone.x0 + 1), integer(random, cfg.height)];
       }

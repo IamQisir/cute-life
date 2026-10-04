@@ -4,9 +4,10 @@
 
 import { type Stars, chooseDeployment } from './ai';
 import {
+  ARENA_PRESETS,
   type ArenaConfig,
+  type ArenaSize,
   BLUE,
-  DEFAULT_ARENA,
   type Pt,
   RED,
   type Team,
@@ -20,15 +21,19 @@ import type { ArenaLayout, ArenaViewState } from '../render/arenaView';
 
 export type Opponent =
   | { kind: 'ai'; stars: Stars }
-  | { kind: 'challenge'; army: Pt[]; name?: string }
-  | { kind: 'replay'; red: Pt[]; blue: Pt[] };
+  | { kind: 'challenge'; army: Pt[]; name?: string; size: ArenaSize }
+  | { kind: 'replay'; red: Pt[]; blue: Pt[]; size: ArenaSize };
 
 export type Phase = 'deploy' | 'thinking' | 'reveal' | 'battle' | 'result';
 
 export interface BattleOutcome {
   winner: Winner;
+  /** Territory (painted squares): what decides the winner. */
   red: number;
   blue: number;
+  /** Living cells at the end: the tie-break. */
+  cellsRed: number;
+  cellsBlue: number;
   /** From the player's point of view; null when just watching a replay. */
   youWon: boolean | null;
 }
@@ -37,13 +42,16 @@ export interface BattleHooks {
   /** Phase or numbers changed: redraw the HUD. */
   changed(): void;
   births(points: [number, number][]): void;
+  /** The arena size changed: reframe the camera. */
+  resized(): void;
   finished(outcome: BattleOutcome): void;
 }
 
 const REVEAL_MS = 1400;
 
 export class BattleMode {
-  readonly cfg: ArenaConfig = DEFAULT_ARENA;
+  size: ArenaSize = 'small';
+  cfg: ArenaConfig = ARENA_PRESETS.small;
   sim = new BattleSim(this.cfg);
   phase: Phase = 'deploy';
   opponent: Opponent = { kind: 'ai', stars: 3 };
@@ -72,7 +80,13 @@ export class BattleMode {
       const { x0, x1 } = deployZone(this.cfg, t);
       return { x0, x1 };
     };
-    return { width: this.cfg.width, height: this.cfg.height, zones: { 1: z(RED), 2: z(BLUE) } };
+    return {
+      width: this.cfg.width,
+      height: this.cfg.height,
+      wrapX: this.cfg.wrapX,
+      wrapY: this.cfg.wrapY,
+      zones: { 1: z(RED), 2: z(BLUE) },
+    };
   }
 
   arenaState(): ArenaViewState {
@@ -87,6 +101,8 @@ export class BattleMode {
   /** Start (or restart) against an opponent. Replays go straight to the reveal. */
   start(opponent: Opponent, now: number, keepArmy = false) {
     this.opponent = opponent;
+    // Challenges and replays bring their own arena size.
+    if (opponent.kind !== 'ai' && opponent.size !== this.size) this.applySize(opponent.size);
     this.outcome = null;
     this.paused = false;
     if (opponent.kind === 'replay') {
@@ -135,6 +151,22 @@ export class BattleMode {
     this.army = [];
     this.sim.showArmy(this.myTeam, this.army, now);
     this.hooks.changed();
+  }
+
+  /** Pick the arena size while deploying against the AI. Clears the army. */
+  setSize(size: ArenaSize, now: number) {
+    if (this.phase !== 'deploy' || this.opponent.kind !== 'ai' || size === this.size) return;
+    this.applySize(size);
+    this.army = [];
+    this.sim.showArmy(this.myTeam, this.army, now);
+    this.hooks.changed();
+  }
+
+  private applySize(size: ArenaSize) {
+    this.size = size;
+    this.cfg = ARENA_PRESETS[size];
+    this.sim = new BattleSim(this.cfg);
+    this.hooks.resized();
   }
 
   setStars(stars: Stars) {
@@ -205,13 +237,13 @@ export class BattleMode {
 
   challengeLink(name?: string): string | null {
     if (this.myTeam !== RED || this.army.length === 0) return null;
-    return location.origin + location.pathname + toChallengeHash({ army: this.army, name });
+    return location.origin + location.pathname + toChallengeHash({ army: this.army, name, size: this.size });
   }
 
   replayLink(): string | null {
     if (this.enemy.length === 0) return null;
     const [red, blue] = this.myTeam === RED ? [this.army, this.enemy] : [this.enemy, this.army];
-    return location.origin + location.pathname + toReplayHash({ red, blue });
+    return location.origin + location.pathname + toReplayHash({ red, blue, size: this.size });
   }
 
   private reveal(now: number) {
@@ -220,19 +252,24 @@ export class BattleMode {
     this.setPhase('reveal', now);
   }
 
+  /** Elimination doesn't end a battle (the survivor keeps painting); a settled board does. */
   private isOver() {
     const { red, blue } = this.sim.score;
-    return this.sim.generation >= this.cfg.generations || red === 0 || blue === 0;
+    return this.sim.generation >= this.cfg.generations || this.sim.settled || (red === 0 && blue === 0);
   }
 
   private finish(now: number) {
-    const { red, blue } = this.sim.score;
-    const winner: Winner = red > blue ? 'red' : blue > red ? 'blue' : 'draw';
+    const { red, blue } = this.sim.territory;
+    const cells = this.sim.score;
+    const byCells: Winner = cells.red > cells.blue ? 'red' : cells.blue > cells.red ? 'blue' : 'draw';
+    const winner: Winner = red > blue ? 'red' : blue > red ? 'blue' : byCells;
     const mine = this.myTeam === RED ? 'red' : 'blue';
     this.outcome = {
       winner,
       red,
       blue,
+      cellsRed: cells.red,
+      cellsBlue: cells.blue,
       youWon: this.opponent.kind === 'replay' || winner === 'draw' ? null : winner === mine,
     };
     this.setPhase('result', now);

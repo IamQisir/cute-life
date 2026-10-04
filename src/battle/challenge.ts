@@ -1,9 +1,9 @@
 import { decodeRle, encodeRle } from '../share/rle';
-import { BLUE, DEFAULT_ARENA, RED, validateDeployment } from './arena';
+import { ARENA_PRESETS, ARENA_SIZES, type ArenaSize, BLUE, RED, validateDeployment } from './arena';
 import type { ArenaConfig, Pt, Team } from './arena';
 
-export interface Challenge { army: Pt[]; name?: string }
-export interface Replay { red: Pt[]; blue: Pt[] }
+export interface Challenge { army: Pt[]; name?: string; size?: ArenaSize }
+export interface Replay { red: Pt[]; blue: Pt[]; size?: ArenaSize }
 
 function cleanName(name: string): string {
   return Array.from(name.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').trim()).slice(0, 24).join('').trim();
@@ -71,10 +71,17 @@ function decodeArmy(payload: string | null, cfg: ArenaConfig, team: Team): Pt[] 
   return points;
 }
 
+/** `s` names the arena preset; absent means 'small' (links made before sizes existed). */
+function sizeParam(params: URLSearchParams): ArenaSize | null {
+  const s = params.get('s');
+  if (s === null) return 'small';
+  return (ARENA_SIZES as string[]).includes(s) ? (s as ArenaSize) : null;
+}
+
 function parameters(hash: string, kind: 'c' | 'r'): URLSearchParams | null {
   if (typeof hash !== 'string' || hash.length > 1_000_000) return null;
   const params = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
-  const allowed = kind === 'c' ? ['c', 'a', 'n'] : ['r', 'a', 'b'];
+  const allowed = kind === 'c' ? ['c', 'a', 'n', 's'] : ['r', 'a', 'b', 's'];
   for (const key of params.keys()) {
     if (!allowed.includes(key) || params.getAll(key).length !== 1) return null;
   }
@@ -83,37 +90,46 @@ function parameters(hash: string, kind: 'c' | 'r'): URLSearchParams | null {
 
 export function toChallengeHash(challenge: Challenge): string {
   const params = new URLSearchParams({ c: '1', a: encodeArmy(challenge.army) });
+  if (challenge.size && challenge.size !== 'small') params.set('s', challenge.size);
   const name = challenge.name === undefined ? '' : cleanName(challenge.name);
   if (name) params.set('n', name);
   return `#${params.toString()}`;
 }
 
-export function fromChallengeHash(hash: string, cfg: ArenaConfig = DEFAULT_ARENA): Challenge | null {
+export function fromChallengeHash(hash: string, cfgOverride?: ArenaConfig): Challenge | null {
   try {
-    if (!validateDeployment(cfg, RED, []).ok) return null;
     const params = parameters(hash, 'c');
     if (!params) return null;
+    const size = sizeParam(params);
+    if (!size) return null;
+    const cfg = cfgOverride ?? ARENA_PRESETS[size];
+    if (!validateDeployment(cfg, RED, []).ok) return null;
     const army = decodeArmy(params.get('a'), cfg, RED);
     if (!army) return null;
     const name = cleanName(params.get('n') ?? '');
-    return name ? { army, name } : { army };
+    return name ? { army, name, size } : { army, size };
   } catch {
     return null;
   }
 }
 
 export function toReplayHash(replay: Replay): string {
-  return `#${new URLSearchParams({ r: '1', a: encodeArmy(replay.red), b: encodeArmy(replay.blue) })}`;
+  const params = new URLSearchParams({ r: '1', a: encodeArmy(replay.red), b: encodeArmy(replay.blue) });
+  if (replay.size && replay.size !== 'small') params.set('s', replay.size);
+  return `#${params}`;
 }
 
-export function fromReplayHash(hash: string, cfg: ArenaConfig = DEFAULT_ARENA): Replay | null {
+export function fromReplayHash(hash: string, cfgOverride?: ArenaConfig): Replay | null {
   try {
-    if (!validateDeployment(cfg, RED, []).ok) return null;
     const params = parameters(hash, 'r');
     if (!params) return null;
+    const size = sizeParam(params);
+    if (!size) return null;
+    const cfg = cfgOverride ?? ARENA_PRESETS[size];
+    if (!validateDeployment(cfg, RED, []).ok) return null;
     const red = decodeArmy(params.get('a'), cfg, RED);
     const blue = decodeArmy(params.get('b'), cfg, BLUE);
-    return red && blue ? { red, blue } : null;
+    return red && blue ? { red, blue, size } : null;
   } catch {
     return null;
   }

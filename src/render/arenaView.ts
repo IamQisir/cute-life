@@ -9,6 +9,9 @@ import { cellHash, tex } from './util';
 export interface ArenaLayout {
   width: number;
   height: number;
+  /** Edges that wrap are drawn dashed; walls are solid. */
+  wrapX: boolean;
+  wrapY: boolean;
   zones: Record<1 | 2, { x0: number; x1: number }>;
 }
 
@@ -58,7 +61,7 @@ export class ArenaView {
   update(cam: Camera, layout: ArenaLayout | null, state: ArenaViewState) {
     this.root.visible = layout !== null;
     if (!layout) return;
-    const sig = `${cam.x},${cam.y},${cam.zoom},${cam.w},${cam.h},${state.showZones.join()},${state.hiddenZone}`;
+    const sig = `${cam.x},${cam.y},${cam.zoom},${cam.w},${cam.h},${state.showZones.join()},${state.hiddenZone},${layout.wrapX},${layout.wrapY}`;
     if (sig === this.sig) return;
     this.sig = sig;
 
@@ -94,20 +97,35 @@ export class ArenaView {
       hatch.tilePosition.set(-cam.x * cam.zoom * (team === 1 ? 1 : -1), -cam.y * cam.zoom);
     }
 
-    // Wobbly double pencil frame.
+    // Frame: walls are a solid double pencil line; edges that wrap are dashed,
+    // a hint that cells leaving there come back on the other side.
     const f = this.frame;
     f.clear();
     const wob = (i: number, j: number) => (((cellHash(i, j) & 1023) / 1023) - 0.5) * 3;
-    const corners: [number, number][] = [[ax0, ay0], [ax1, ay0], [ax1, ay1], [ax0, ay1]];
-    for (let pass = 0; pass < 2; pass++) {
-      const [sx, sy] = corners[0];
-      f.moveTo(sx + wob(pass, 0), sy + wob(0, pass));
-      for (let c = 1; c <= 4; c++) {
-        const [px, py] = corners[c % 4];
-        f.lineTo(px + wob(pass, c), py + wob(c, pass));
+    const edges: { a: [number, number]; b: [number, number]; wraps: boolean }[] = [
+      { a: [ax0, ay0], b: [ax1, ay0], wraps: layout.wrapY },
+      { a: [ax1, ay0], b: [ax1, ay1], wraps: layout.wrapX },
+      { a: [ax1, ay1], b: [ax0, ay1], wraps: layout.wrapY },
+      { a: [ax0, ay1], b: [ax0, ay0], wraps: layout.wrapX },
+    ];
+    edges.forEach(({ a, b, wraps }, e) => {
+      if (wraps) {
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        const n = Math.max(2, Math.round(len / 18));
+        for (let i = 0; i < n; i += 2) {
+          const t0 = i / n;
+          const t1 = Math.min(1, (i + 1) / n);
+          f.moveTo(a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0)
+            .lineTo(a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1);
+        }
+        f.stroke({ width: 1.8, color: INK, alpha: 0.5, cap: 'round' });
+        return;
       }
-      f.stroke({ width: pass ? 1.4 : 2.6, color: INK, alpha: pass ? 0.4 : 0.85, cap: 'round', join: 'round' });
-    }
+      for (let pass = 0; pass < 2; pass++) {
+        f.moveTo(a[0] + wob(pass, e), a[1] + wob(e, pass)).lineTo(b[0] + wob(pass, e + 1), b[1] + wob(e + 1, pass));
+        f.stroke({ width: pass ? 1.6 : 3.4, color: INK, alpha: pass ? 0.45 : 0.9, cap: 'round' });
+      }
+    });
 
     const q = this.question;
     q.visible = state.hiddenZone !== undefined;

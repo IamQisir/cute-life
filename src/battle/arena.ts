@@ -10,19 +10,33 @@ export interface ArenaConfig {
   budget: number;
   generations: number;
   buffer: number;
+  wrapX: boolean;
+  wrapY: boolean;
 }
 
 export const DEFAULT_ARENA: ArenaConfig = {
-  width: 32, height: 24, budget: 20, generations: 150, buffer: 2,
+  width: 28, height: 20, budget: 20, generations: 150, buffer: 1,
+  wrapX: false, wrapY: true,
+};
+
+/** Arena sizes players can pick. Budget grows ~ with the square root of area, generations with width. */
+export type ArenaSize = 'small' | 'medium' | 'large';
+export const ARENA_SIZES: ArenaSize[] = ['small', 'medium', 'large'];
+export const ARENA_PRESETS: Record<ArenaSize, ArenaConfig> = {
+  small: DEFAULT_ARENA,
+  medium: { ...DEFAULT_ARENA, width: 40, height: 28, budget: 32, generations: 220 },
+  large: { ...DEFAULT_ARENA, width: 56, height: 40, budget: 50, generations: 300 },
 };
 export type Grid = Uint8Array;
+export type Paint = Uint8Array;
 export type Winner = 'red' | 'blue' | 'draw';
 export interface BattleResult {
   red: number;
   blue: number;
   generations: number;
   winner: Winner;
-  history?: { red: number; blue: number }[];
+  territory: { red: number; blue: number };
+  history?: { red: number; blue: number; territoryRed: number; territoryBlue: number }[];
 }
 
 function dimensions(width: number, height: number): void {
@@ -39,6 +53,7 @@ function configError(cfg: ArenaConfig): string | undefined {
   if (!Number.isSafeInteger(cfg.budget) || cfg.budget < 0) return 'Invalid cell budget.';
   if (!Number.isSafeInteger(cfg.generations) || cfg.generations < 0) return 'Invalid generation limit.';
   if (!Number.isSafeInteger(cfg.buffer) || cfg.buffer < 0) return 'Invalid deployment buffer.';
+  if (typeof cfg.wrapX !== 'boolean' || typeof cfg.wrapY !== 'boolean') return 'Invalid arena wrapping flags.';
   return undefined;
 }
 
@@ -49,59 +64,72 @@ export function emptyGrid(cfg: ArenaConfig): Grid {
 }
 
 // Cache geometry only; grids and scratch space are always local to each caller.
-const topologies = new Map<string, Uint32Array>();
-function topology(width: number, height: number): Uint32Array {
+interface Topology { neighbors: Uint32Array; starts: Uint32Array }
+const topologies = new Map<string, Topology>();
+function topology(width: number, height: number, wrapX: boolean, wrapY: boolean): Topology {
   dimensions(width, height);
-  const key = `${width}:${height}`;
+  const key = `${width}:${height}:${wrapX}:${wrapY}`;
   const cached = topologies.get(key);
   if (cached) return cached;
   const neighbors = new Uint32Array(width * height * 8);
+  const starts = new Uint32Array(width * height + 1);
   let offset = 0;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
+      starts[y * width + x] = offset;
       for (let dy = -1; dy <= 1; dy++) {
-        const row = ((y + dy + height) % height) * width;
+        const ny = y + dy;
+        if (!wrapY && (ny < 0 || ny >= height)) continue;
+        const row = ((ny + height) % height) * width;
         for (let dx = -1; dx <= 1; dx++) {
-          if (dx || dy) neighbors[offset++] = row + (x + dx + width) % width;
+          const nx = x + dx;
+          if ((!dx && !dy) || (!wrapX && (nx < 0 || nx >= width))) continue;
+          neighbors[offset++] = row + (nx + width) % width;
         }
       }
     }
   }
+  starts[width * height] = offset;
+  const result = { neighbors, starts };
   if (topologies.size >= 8) topologies.delete(topologies.keys().next().value!);
-  topologies.set(key, neighbors);
-  return neighbors;
+  topologies.set(key, result);
+  return result;
 }
 
-function checkGrid(grid: Grid, width: number, height: number): Uint32Array {
+function checkGrid(grid: Grid, width: number, height: number, wrapX: boolean, wrapY: boolean): Topology {
   dimensions(width, height);
   if (grid.length !== width * height) throw new RangeError('Grid size does not match arena dimensions.');
-  return topology(width, height);
+  return topology(width, height, wrapX, wrapY);
 }
 
-export function neighborCountsGrid(grid: Grid, width: number, height: number): Uint8Array {
-  const neighbors = checkGrid(grid, width, height);
+export function neighborCountsGrid(
+  grid: Grid, width: number, height: number, wrapX = true, wrapY = true,
+): Uint8Array {
+  const { neighbors, starts } = checkGrid(grid, width, height, wrapX, wrapY);
   const counts = new Uint8Array(grid.length);
   for (let i = 0; i < grid.length; i++) {
     if (grid[i] === EMPTY) continue;
-    const end = i * 8 + 8;
-    for (let j = i * 8; j < end; j++) counts[neighbors[j]]++;
+    const end = starts[i + 1];
+    for (let j = starts[i]; j < end; j++) counts[neighbors[j]]++;
   }
   return counts;
 }
 
 // Only cells neighbouring live cells can live next. Each touched cell is visited
-// once; the eight toroidal offsets count separately even on very small arenas.
+// once; wrapped offsets count separately even on very small arenas. Off-grid
+// offsets at walls are excluded from the cached geometry altogether.
 // Return both populations packed into a number to avoid a per-generation object.
 function evolve(
-  grid: Grid, next: Grid, neighbors: Uint32Array,
+  grid: Grid, next: Grid, geometry: Topology,
   counts: Uint8Array, reds: Uint8Array, touched: Uint32Array,
 ): number {
+  const { neighbors, starts } = geometry;
   let length = 0;
   for (let i = 0; i < grid.length; i++) {
     const color = grid[i];
     if (color === EMPTY) continue;
-    const end = i * 8 + 8;
-    for (let j = i * 8; j < end; j++) {
+    const end = starts[i + 1];
+    for (let j = starts[i]; j < end; j++) {
       const cell = neighbors[j];
       if (counts[cell]++ === 0) touched[length++] = cell;
       if (color === RED) reds[cell]++;
@@ -126,8 +154,10 @@ function evolve(
   return red + blue * (grid.length + 1);
 }
 
-export function stepGrid(grid: Grid, width: number, height: number): Grid {
-  const neighbors = checkGrid(grid, width, height);
+export function stepGrid(
+  grid: Grid, width: number, height: number, wrapX = true, wrapY = true,
+): Grid {
+  const neighbors = checkGrid(grid, width, height, wrapX, wrapY);
   const next = new Uint8Array(grid.length);
   evolve(grid, next, neighbors, new Uint8Array(grid.length),
     new Uint8Array(grid.length), new Uint32Array(grid.length));
@@ -142,6 +172,21 @@ export function population(grid: Grid): { red: number; blue: number } {
     else if (grid[i] === BLUE) blue++;
   }
   return { red, blue };
+}
+
+/** Live cells repaint their squares; empty cells leave earlier paint intact. */
+export function paintCells(paint: Paint, grid: Grid): void {
+  if (paint.length !== grid.length) throw new RangeError('Paint size does not match grid size.');
+  for (let i = 0; i < grid.length; i++) if (grid[i] !== EMPTY) paint[i] = grid[i];
+}
+
+export function territory(paint: Paint): { red: number; blue: number } {
+  return population(paint);
+}
+
+function equalGrid(a: Grid, b: Grid): boolean {
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }
 
 export function deployZone(cfg: ArenaConfig, team: Team): { x0: number; x1: number; y0: number; y1: number } {
@@ -198,26 +243,41 @@ export function simulateBattle(
 ): BattleResult {
   let grid = placeArmies(cfg, redArmy, blueArmy);
   let next: Grid = new Uint8Array(grid.length);
-  const neighbors = topology(cfg.width, cfg.height);
+  let previous: Grid = new Uint8Array(grid.length);
+  let hasPrevious = false;
+  const neighbors = topology(cfg.width, cfg.height, cfg.wrapX, cfg.wrapY);
   const counts = new Uint8Array(grid.length);
   const reds = new Uint8Array(grid.length);
   const touched = new Uint32Array(grid.length);
   let { red, blue } = population(grid);
+  const paint: Paint = new Uint8Array(grid.length);
+  paintCells(paint, grid);
   let generations = 0;
-  const history = opts?.history ? [{ red, blue }] : undefined;
+  const history = opts?.history ? [{ red, blue, territoryRed: red, territoryBlue: blue }] : undefined;
   const base = grid.length + 1;
-  while (generations < cfg.generations && red > 0 && blue > 0) {
+  while (generations < cfg.generations && (red > 0 || blue > 0)) {
     const packed = evolve(grid, next, neighbors, counts, reds, touched);
     red = packed % base;
     blue = Math.floor(packed / base);
-    const swap = grid;
-    grid = next;
-    next = swap;
+    paintCells(paint, next);
     generations++;
-    history?.push({ red, blue });
+    if (history) {
+      const painted = territory(paint);
+      history.push({ red, blue, territoryRed: painted.red, territoryBlue: painted.blue });
+    }
+    // Compare full coloured grids: equal populations alone do not imply a cycle.
+    if (equalGrid(next, grid) || (hasPrevious && equalGrid(next, previous))) break;
+    const spare = previous;
+    previous = grid;
+    grid = next;
+    next = spare;
+    hasPrevious = true;
   }
+  const painted = territory(paint);
+  const difference = painted.red - painted.blue || red - blue;
   const result: BattleResult = {
-    red, blue, generations, winner: red === blue ? 'draw' : red > blue ? 'red' : 'blue',
+    red, blue, generations, territory: painted,
+    winner: difference === 0 ? 'draw' : difference > 0 ? 'red' : 'blue',
   };
   if (history) result.history = history;
   return result;

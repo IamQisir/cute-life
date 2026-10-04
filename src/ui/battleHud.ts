@@ -2,6 +2,7 @@
 // result card. Pure DOM; BattleMode owns the state, main.ts wires actions.
 
 import type { Stars } from '../battle/ai';
+import { ARENA_SIZES, type ArenaSize } from '../battle/arena';
 import type { BattleMode } from '../battle/mode';
 
 export interface BattleActions {
@@ -9,6 +10,7 @@ export interface BattleActions {
   random(): void;
   clear(): void;
   setStars(stars: Stars): void;
+  setSize(size: ArenaSize): void;
   challenge(name: string): void;
   editArmy(): void;
   replay(): void;
@@ -72,12 +74,14 @@ export class BattleHud {
   render(b: BattleMode) {
     const o = b.opponent;
     const vs = o.kind === 'ai' ? `vs AI ${'★'.repeat(o.stars)}` : o.kind === 'challenge' ? `vs ${o.name || 'a friend'}` : 'replay';
-    const { red, blue } = b.sim.score;
+    // Territory decides the winner; living cells are shown as context.
+    const { red, blue } = b.sim.territory;
+    const cells = b.sim.score;
 
     switch (b.phase) {
       case 'deploy':
         this.title.textContent = b.myTeam === 1 ? 'deploy your red army' : 'deploy your blue army';
-        this.sub.textContent = `${b.budgetLeft} of ${b.cfg.budget} cells left · ${vs}`;
+        this.sub.textContent = `${b.budgetLeft} of ${b.cfg.budget} cells left · ${b.cfg.width}×${b.cfg.height} · ${vs}`;
         break;
       case 'thinking':
         this.title.textContent = 'the AI is thinking...';
@@ -102,9 +106,9 @@ export class BattleHud {
     this.redNum.textContent = `red ${red}`;
     this.blueNum.textContent = `${blue} blue`;
     this.redBar.style.width = `${red + blue ? (100 * red) / (red + blue) : 50}%`;
-    this.gen.textContent = `generation ${b.sim.generation} / ${b.cfg.generations}`;
+    this.gen.textContent = `territory · generation ${b.sim.generation} / ${b.cfg.generations} · cells ${cells.red} : ${cells.blue}`;
 
-    const key = `${b.phase}|${o.kind}|${o.kind === 'ai' ? o.stars : ''}|${b.paused}|${b.army.length > 0}|${b.myTeam}`;
+    const key = `${b.phase}|${o.kind}|${o.kind === 'ai' ? o.stars : ''}|${b.paused}|${b.army.length > 0}|${b.myTeam}|${b.size}`;
     if (key !== this.lastKey) {
       this.lastKey = key;
       this.buildControls(b);
@@ -127,7 +131,11 @@ export class BattleHud {
           s.addEventListener('click', () => this.a.setStars(i as Stars));
           stars.append(s);
         }
-        this.bottom.append(stars);
+        const sizes = el('div', 'controls sizes');
+        for (const size of ARENA_SIZES) {
+          sizes.append(button(size, () => this.a.setSize(size), size === b.size ? 'on' : ''));
+        }
+        this.bottom.append(sizes, stars);
       }
       row.append(
         button('ready!', this.a.ready, 'big'),
@@ -158,12 +166,13 @@ export class BattleHud {
     }
 
     if (b.phase === 'result' && b.outcome) {
-      const { winner, red, blue, youWon } = b.outcome;
+      const { winner, red, blue, cellsRed, cellsBlue, youWon } = b.outcome;
       const headline =
         youWon === true ? 'you win!' : youWon === false ? (o.kind === 'ai' ? 'the AI wins!' : 'they win!') : winner === 'draw' ? "it's a draw!" : `${winner} wins!`;
       const h = el('div', `result-title ${winner}`, headline);
       const score = el('div', 'result-score');
       score.append(el('span', 'red', String(red)), el('span', '', ' : '), el('span', 'blue', String(blue)));
+      const detail = el('div', 'result-detail', `squares painted · cells left ${cellsRed} : ${cellsBlue}`);
       const actions = el('div', 'controls');
       if (o.kind !== 'replay') actions.append(button('edit army', this.a.editArmy, 'big'));
       if (o.kind === 'replay') actions.append(button('play the AI', this.a.vsAi, 'big'));
@@ -174,7 +183,7 @@ export class BattleHud {
         button('record replay', this.a.recordReplay),
       );
       if (o.kind === 'challenge') actions.append(button('play the AI', this.a.vsAi));
-      this.card.append(h, score, actions);
+      this.card.append(h, score, detail, actions);
       this.card.style.display = '';
     }
   }

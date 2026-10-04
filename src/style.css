@@ -300,6 +300,7 @@ html, body {
 .stars .on { color: #e0a640; }
 .stars span:hover { transform: scale(1.15); display: inline-block; }
 .challenge-row { align-items: center; }
+.sizes .btn { font-size: 17px; padding: 2px 12px; }
 .name-input {
   font: inherit;
   font-size: 18px;
@@ -329,7 +330,8 @@ html, body {
 }
 .result-title { font-family: 'Caveat', cursive; font-weight: 700; font-size: 56px; line-height: 1; }
 .result-title.draw { color: var(--ink); }
-.result-score { font-family: 'Caveat', cursive; font-weight: 700; font-size: 40px; }
+.result-score { font-family: 'Caveat', cursive; font-weight: 700; font-size: 40px; line-height: 1; }
+.result-detail { font-size: 16px; color: var(--ink-soft); margin-bottom: 4px; }
 
 @media (max-width: 720px) {
   .battle-title { font-size: 28px; top: 56px; }

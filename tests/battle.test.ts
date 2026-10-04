@@ -13,6 +13,9 @@ import { encodeRle } from '../src/share/rle';
 import { PATTERNS } from '../src/life/patterns';
 import { classify } from '../src/life/clusters';
 
+/** Wall-clock limits catch big regressions, not exact speed: shared CI machines are ~2x slower. */
+const SLOW = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.CI ? 3 : 1;
+
 const cfg = LEGACY_PRESETS.small;
 const sorted = (points: Pt[]): Pt[] => points.slice().sort((a, b) => a[1] - b[1] || a[0] - b[0]);
 function colored(width: number, height: number, red: Pt[], blue: Pt[] = []): Grid {
@@ -333,8 +336,8 @@ describe('seeded AI', () => {
       times[stars] = measurements.sort((a, b) => a - b)[1];
     }
     console.info('Battle AI median elapsed ms:', times);
-    expect(times[3]).toBeLessThan(1000);
-    expect(times[5]).toBeLessThan(1500);
+    expect(times[3]).toBeLessThan(1000 * SLOW);
+    expect(times[5]).toBeLessThan(1500 * SLOW);
     // Time a full-length battle: find the first seed pair that doesn't settle early,
     // so this doesn't depend on exactly which armies the AI generates.
     let red: Pt[] = [];
@@ -349,7 +352,7 @@ describe('seeded AI', () => {
     for (let i = 0; i < 100; i++) simulateBattle(cfg, red, blue);
     const battleMs = (performance.now() - start) / 100;
     console.info('Battle simulation mean elapsed ms:', battleMs);
-    expect(battleMs).toBeLessThan(1);
+    expect(battleMs).toBeLessThan(1 * SLOW);
   }, 30_000);
 
   it('five stars beats one star in at least 60% of 20 seeds, playing each seed as both colours', () => {
@@ -684,6 +687,6 @@ describe('garden AI strength and timing', () => {
       expect(validateDeployment(ARENA_PRESETS.large, team, army).ok).toBe(true);
     }
     console.info('Garden large five-star elapsed ms:', times);
-    expect(Math.max(...times)).toBeLessThan(1500);
+    expect(Math.max(...times)).toBeLessThan(1500 * SLOW);
   }, 30_000);
 });

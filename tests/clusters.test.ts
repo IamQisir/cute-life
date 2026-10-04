@@ -3,6 +3,9 @@ import { classify, FAMILY, findClusters, findTeamClusters, type Kind } from '../
 import { fromList, key, step, toList, type Cells } from '../src/life/engine';
 import { PATTERNS, placePattern } from '../src/life/patterns';
 
+/** Wall-clock limits catch big regressions, not exact speed: shared CI machines are ~2x slower. */
+const SLOW = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.CI ? 3 : 1;
+
 const cases: [Exclude<Kind, 'blob'>, string[], number][] = [
   ['block', ['OO', 'OO'], 1],
   ['beehive', ['.OO.', 'O..O', '.OO.'], 1],
@@ -207,7 +210,7 @@ describe('organism grouping', () => {
     const elapsed = performance.now() - start;
     console.info(`20k soup (reach 2): ${elapsed.toFixed(2)} ms`);
     expect(clusters.reduce((total, cluster) => total + cluster.cells.length, 0)).toBe(20000);
-    expect(elapsed).toBeLessThan(200);
+    expect(elapsed).toBeLessThan(200 * SLOW);
   });
 });
 
@@ -282,7 +285,7 @@ describe('battle team clustering', () => {
     for (let i = 0; i < 100; i++) findTeamClusters(input, 56, 40, false, true);
     const ms = (performance.now() - start) / 100;
     console.info(`Full battle arena team clustering: ${ms.toFixed(3)} ms`);
-    expect(ms).toBeLessThan(5);
+    expect(ms).toBeLessThan(5 * SLOW);
     const clusters = findTeamClusters(input, 56, 40, false, true);
     expect(clusters).toHaveLength(2);
     expect(clusters.reduce((total, c) => total + c.cells.length, 0)).toBe(input.length);

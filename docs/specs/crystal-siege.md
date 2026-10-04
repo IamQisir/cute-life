@@ -1,6 +1,6 @@
 # Crystal Siege — spec
 
-Status: **draft, not started** · Mode: new battle mode next to the garden battle
+Status: **Phase 0 complete; minimal playable mode not started** · Mode: new battle mode next to the garden battle
 Sources: player idea ("a MOBA where you destroy the enemy crystal, with guns or
 a big army"), Codex design review (xhigh, with in-engine experiments), Claude review.
 
@@ -50,20 +50,27 @@ The crystal only keeps score of the damage."*
 
 ### 3.1 Arena
 
-**Proposed (Claude): 128 wide × 96 tall**, walls on all four sides, no wrap,
-no internal obstacles; red attacks from the left, blue from the right.
+**Decided after Phase 0: 128 wide × 96 tall**, walls on all four sides,
+no wrap, no internal obstacles; red attacks from the left, blue from the right.
 Landscape fits laptop screens (~9 px/cell at 1600×900 vs ~6 px for a portrait
-board), keeping creatures readable.
+board). Coordinates below are zero-based and inclusive. The crystals are
+inset to fit both diagonal gun trajectories within the landscape height.
 
-Codex's original geometry (portrait, tested fixtures below were measured on
-it), kept for reference until the landscape layout is validated:
-
-| Element | Bounds (inclusive), 96×128 portrait |
+| Element | Bounds (inclusive), 128×96 landscape |
 |---|---|
-| Red deployment | x 4…43, y 4…123 |
-| Blue deployment | x 52…91, y 4…123 |
-| Red crystal hitbox | x 6…17, y 58…69 |
-| Blue crystal hitbox | x 78…89, y 58…69 |
+| Red deployment | x 4…59, y 4…91 |
+| Blue deployment | x 68…123, y 4…91 |
+| Red crystal centre / hitbox | (40,48); x 34…45, y 42…53 |
+| Blue crystal centre / hitbox | (88,48); x 82…93, y 42…53 |
+| Upper red gun mount / guide | gun (51,4), orientation 7; muzzle (61,28) → (83,50), southeast |
+| Lower red gun mount / guide | gun (51,56), orientation 3; muzzle (61,67) → (83,45), northeast |
+| Central ship guide | y 42…53, horizontal |
+
+Blue mounts and guides are horizontal mirrors. Orientation numbers reflect
+horizontally for 4…7, then rotate clockwise by `(orientation % 4) × 90°`.
+See [Phase 0 experiments](crystal-siege-experiments.md) for exact seeds,
+muzzles, legal recipes, search coverage, and timing. The earlier 96×128
+portrait geometry is superseded; its timings are not landscape fixtures.
 
 - Crystal deployment exclusion: hitbox plus a 2-cell halo.
 - Routes (upper diagonal, lower diagonal, central horizontal band) are
@@ -123,22 +130,34 @@ variant is deferred.
 
 ### 3.6 Playback
 8 gen/s, 1.4 s reveal, slow final 24 generations, short result hold. A
-640-generation match is ≈ 87 s including pauses; an unopposed gun kill lands
-near 50 s.
+640-generation match is ≈ 87 s including pauses; the certified landscape
+gun kills at gen 388 (48.5 s of evolution).
 
 ## 4. Life facts the design relies on
 
-Tested by Codex with our engine (`stepGrid`, `simulateBattle`):
+Re-validated in the 128×96 landscape arena with the existing `stepGrid`
+(B3/S23 + Immigration), transparent crystal observation, and catalogue RLEs.
+Full coordinates and generation horizons are in the
+[Phase 0 experiments](crystal-siege-experiments.md).
 
-| Fixture | Result |
+| Fixture | Landscape result |
 |---|---|
-| Red glider → blue eater 1 (standard approach) | Glider eaten; the eater recovers as 7 blue cells |
-| Red glider → blue Snark | Outgoing glider stays red; the catalyst recovers but its block turns red (45 blue + 4 red) |
-| Red glider → blue buckaroo (LifeWiki's reaction) | Outgoing glider stays red; oscillator back to its blue 23-cell phase at gen 150 |
-| Red glider → blue block, varied offsets | Mutual annihilation, surviving blue block, miss, or big all-red reactions |
-| Unopposed upper Gosper gun (portrait fixture) | First crystal contact gen 160; 64-HP crystal destroyed at gen 345 |
-| 5-LWSS train (45 cells), unopposed | First contact gen 75; 45 HP over 720 gens (does **not** kill) |
-| Blue eater at the certified upper-stream port | **Blocks the gun completely for 720 gens**, returns to 7 blue cells |
+| Red glider → blue eater 1 (certified approach) | Glider eaten; eater recovers as 7 blue cells, no red cells at gen 160 |
+| Red glider → supplied blue Snark catalogue fixture | Outgoing glider stays red; block turns red; gen 150 has 48 blue + 4 red catalyst cells and a 5-cell red glider. Historical 45-blue catalyst count not reproduced by this supplied RLE |
+| Red glider → blue buckaroo | Outgoing glider stays red; oscillator back to 23 blue cells at gen 150 |
+| Red glider → blue block, offsets −8…8 | Miss (5 red + 4 blue), surviving blue block, mutual annihilation, or large all-red reactions |
+| Unopposed upper/lower vertical Gosper gun | First crystal contact gen 108; 64-HP crystal destroyed at gen 388 |
+| Unopposed upper/lower horizontal Gosper gun | First contact gen 162; destroyed at gen 442 |
+| 5-LWSS rush (45 cells), two legal rear launch rails | 33 HP lost over 640 gens; does **not** kill (portrait's 45-HP train result is superseded) |
+| Blue eater at certified upper port (69,35), orientation 0 | **Blocks completely for 640 gens**; first disturbance 52, recovery 54, ends as 7 blue cells, zero recolouring |
+| Gun + best-found 4-LWSS escort (72 cells total) vs that eater | First contact 128, kill 268; last original blue eater cell at gen 53, no blue population at 640. Friendly gun also breaks; the combined reaction supplies the damage |
+
+The release gate is **YES** for this geometry at the original crystal/budget
+numbers. The four-LWSS escort search damaged in 792/3269 legal cases (24.2%)
+and killed in 114/3269 (3.5%). This is finite search coverage, not a universal
+counter. Gun-preserving alternatives and whole-budget attacks are reported
+separately. The small template tournament does not yet meet the broader
+§9 damage/destruction/style-balance targets.
 
 Consequences:
 - An aligned eater is a reliable defence; a wrong-side hit has no guarantee.
@@ -148,8 +167,9 @@ Consequences:
   ash. A catalyst near your own crystal can leave enemy-coloured cells inside
   it after a reaction.
 
-**The central risk:** a 7-cell eater nullifies a 36-cell gun. The mode only
-works if equal-budget assault can contest that eater.
+**The central risk:** a 7-cell eater nullifies a 36-cell gun. Phase 0 found
+legal equal-budget counterplay against the certified port; other ports and
+two-eater formations still need broader balance testing.
 
 ## 5. Counterplay (what actually holds)
 
@@ -252,15 +272,23 @@ eater stops it, and an equal-budget assault can contest that eater.*
 | 2. Polish | snapping + trajectory previews; firing/bite/crack effects; unit-level AI in a Web Worker; versioned links | L | both |
 | 3. Balance | tournament + first player playtests against the gates | L | both |
 
-## 11. Open decisions
+## 11. Decisions and follow-up
 
-1. **Phasing**: experiments first, then the minimal playable mode. *Recommended.*
-2. **Arena orientation**: landscape 128×96 (Claude) vs portrait 96×128
-   (Codex's tested fixtures). *Recommended: landscape, re-validate fixtures in
-   phase 0.*
-3. **Garden battle**: keep it as a separate mode. *Recommended.*
-4. Crystal numbers (64 HP, 12×12, cap 8, 16 units/HP) and the 72-cell budget
-   are starting points pending phase 0.
+1. **Phasing — decided**: Phase 0 headless experiments are complete; build
+   the minimal playable mode next. Results and all measured tables:
+   [crystal-siege-experiments.md](crystal-siege-experiments.md).
+2. **Arena — decided**: landscape 128×96, walls, no wrap, inset crystals and
+   deployment geometry from §3.1. Both diagonal gun mounts are re-validated.
+3. **Garden battle — decided**: remains a separate mode. Phase 0 has no UI
+   imports and changes no garden/sandbox behaviour or existing link formats.
+4. **Starting rules — retained for Phase 1**: 64 HP, 12×12, cap 8,
+   16 units/HP, 72-cell budget, catalogue seed costs, two-cell exclusion halo.
+   The release gate passes without raising eater cost or changing Life.
+5. **Balance/readability — open**: the small deterministic tournament falls
+   below §9's broader playtest targets. Expand army templates and held-out
+   ports, inspect stationary ash and friendly machinery interference, then
+   measure visible/headless parity, worker performance and phone playback.
+   Finite searches at one certified port do not prove universal counterplay.
 
 ## References
 - LifeWiki: [Gosper glider gun](https://conwaylife.com/wiki/Gosper_glider_gun),

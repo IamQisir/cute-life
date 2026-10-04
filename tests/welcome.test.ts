@@ -1,14 +1,39 @@
 import { describe, expect, it } from 'vitest';
-import { fromList, step, keyX, keyY, toList } from '../src/life/engine';
+import { fromList, step, keyX, keyY, toList, type Cells } from '../src/life/engine';
 import { Camera } from '../src/render/camera';
 import { Sim } from '../src/sim';
 import { borrowSandbox } from '../src/ui/welcomeSandbox';
 import {
-  buildWelcomeScene, showcaseSeed, SHOWCASE_GUNS, COLLISION_ZONES, welcomeLettering, welcomePattern, WELCOME_GENESIS, WELCOME_CELL_CAP, WELCOME_SMALL_CAP, WELCOME_PRE_ADVANCE,
+  buildWelcomeScene, showcaseSeed, SHOWCASE_GUNS, SHOWCASE_BATTERIES, COLLISION_ZONES, welcomeLettering, welcomePattern, WELCOME_GENESIS, WELCOME_CELL_CAP, WELCOME_SMALL_CAP, WELCOME_PRE_ADVANCE,
 } from '../src/ui/welcomeScene';
 import { welcomeBeat, welcomeCamera, welcomeGeneration, welcomeWideZoom, WELCOME_SHOTS, welcomeLensTimeline, welcomeSemanticSwitch, welcomeUsesDive, WELCOME_FOCUS, WELCOME_IRIS_START, WELCOME_SECONDS, WELCOME_ZOOM_END } from '../src/ui/welcomeTimeline';
 
-describe('welcome showcase', () => {
+/** Equal-area screen samples, with a true 20-cell radius rather than a bounding box. */
+function screenCoverage(cells: Cells, seconds: number, width: number, height: number) {
+  const radius = 20, columns = 32, rows = 48;
+  const buckets = new Map<string, [number, number][]>();
+  for (const point of toList(cells)) {
+    const bucket = `${Math.floor(point[0] / radius)},${Math.floor(point[1] / radius)}`;
+    if (!buckets.has(bucket)) buckets.set(bucket, []);
+    buckets.get(bucket)!.push(point);
+  }
+  const camera = welcomeCamera(seconds, width, height);
+  let occupied = 0;
+  for (let row = 0; row < rows; row++) for (let col = 0; col < columns; col++) {
+    const x = camera.x + ((col + 0.5) / columns - 0.5) * width / camera.zoom;
+    const y = camera.y + ((row + 0.5) / rows - 0.5) * height / camera.zoom;
+    const bx = Math.floor(x / radius), by = Math.floor(y / radius);
+    let active = false;
+    for (let dx = -1; dx <= 1 && !active; dx++) for (let dy = -1; dy <= 1 && !active; dy++) {
+      active = (buckets.get(`${bx + dx},${by + dy}`) ?? []).some(([px, py]) => (px - x) ** 2 + (py - y) ** 2 <= radius ** 2);
+    }
+    if (active) occupied++;
+  }
+  return occupied / (columns * rows);
+}
+
+// Whole-show simulations: well under a second locally, but CI runners are slower.
+describe('welcome showcase', { timeout: 30_000 }, () => {
   it('builds a deterministic, already-busy scene from the catalog', () => {
     const first = buildWelcomeScene();
     expect(first).toEqual(buildWelcomeScene());
@@ -28,7 +53,7 @@ describe('welcome showcase', () => {
     const scene = buildWelcomeScene();
     expect([...scene].filter((k) => Math.abs(keyX(k) - WELCOME_GENESIS.x) < 15 && Math.abs(keyY(k) - WELCOME_GENESIS.y) < 10)).toEqual([]);
     let combined = showcaseSeed();
-    let isolated = SHOWCASE_GUNS.map((gun) => {
+    let isolated = SHOWCASE_BATTERIES.map((gun) => {
       let cells = fromList(welcomePattern('gosperglidergun', 0, 0));
       for (let i = 0; i < gun.phase; i++) cells = step(cells);
       return fromList(toList(cells).map(([x, y]) => [gun.x + x * (gun.flipX ? -1 : 1), gun.y + y * (gun.flipY ? -1 : 1)]));
@@ -37,8 +62,9 @@ describe('welcome showcase', () => {
       combined = step(combined); isolated = isolated.map(step);
     }
     const uncollided = new Set(isolated.flatMap((cells) => [...cells]));
-    const collisionLosses = [...uncollided].filter((k) => !combined.has(k) && COLLISION_ZONES.some((zone) => Math.hypot(keyX(k) - zone.x, keyY(k) - zone.y) < zone.radius));
-    expect(collisionLosses.length).toBeGreaterThan(0);
+    const activeCorridors = COLLISION_ZONES.filter((zone) => [...uncollided].some((k) =>
+      !combined.has(k) && Math.hypot(keyX(k) - zone.x, keyY(k) - zone.y) < zone.radius));
+    expect(activeCorridors.length).toBeGreaterThanOrEqual(3);
   });
 
   it.each([false, true])('bounds population, protects the lettering and measures median generation time (small=%s)', (small) => {
@@ -46,23 +72,81 @@ describe('welcome showcase', () => {
     let peak = cells.size;
     const title = welcomeLettering();
     const timings: number[] = [];
+    const populations: number[] = [];
     let warmSize = 0;
     for (let i = 0; i < WELCOME_PRE_ADVANCE + welcomeGeneration(WELCOME_SECONDS); i++) {
       if (i === WELCOME_PRE_ADVANCE) {
         warmSize = cells.size;
+        populations.push(cells.size);
         cells = new Set([...cells, ...fromList(welcomePattern('rpentomino', WELCOME_GENESIS.x, WELCOME_GENESIS.y))]);
       }
       const start = performance.now();
       cells = step(cells);
-      if (i >= WELCOME_PRE_ADVANCE) timings.push(performance.now() - start);
+      if (i >= WELCOME_PRE_ADVANCE) {
+        timings.push(performance.now() - start);
+        populations.push(cells.size);
+      }
       peak = Math.max(peak, cells.size);
-      expect(cells.size).toBeLessThanOrEqual(small ? WELCOME_SMALL_CAP : WELCOME_CELL_CAP);
+      expect(cells.size).toBeLessThan(small ? WELCOME_SMALL_CAP : WELCOME_CELL_CAP);
       const centre = new Set([...cells].filter((k) => keyX(k) >= -130 && keyX(k) <= 130 && Math.abs(keyY(k)) <= 23));
       expect(centre).toEqual(title);
     }
     const median = timings.sort((a, b) => a - b)[Math.floor(timings.length / 2)];
+    populations.sort((a, b) => a - b);
+    expect(populations[0]).toBeGreaterThanOrEqual(small ? 3000 : 7000);
+    expect(populations.at(-1)).toBeLessThanOrEqual(small ? 4000 : 10000);
     expect(median).toBeLessThan(Boolean((globalThis as { process?: { env?: { CI?: string } } }).process?.env?.CI) ? 40 : 12);
-    console.info(`Welcome ${small ? 'small' : 'full'}: warm ${warmSize}, peak ${peak}, final ${cells.size}, median ${median.toFixed(3)} ms, bounds ${JSON.stringify({ minX: Math.min(...toList(cells).map(([x]) => x)), maxX: Math.max(...toList(cells).map(([x]) => x)), minY: Math.min(...toList(cells).map(([, y]) => y)), maxY: Math.max(...toList(cells).map(([, y]) => y)) })}`);
+    console.info(`Welcome ${small ? 'small' : 'full'}: population min/median/peak ${populations[0]}/${populations[Math.floor(populations.length / 2)]}/${populations.at(-1)}, warm ${warmSize}, warmup + show peak ${peak}, final ${cells.size}, step median ${median.toFixed(3)} ms`);
+  });
+
+  it.each([false, true])('fills the visible world throughout both wide shots (small=%s)', (small) => {
+    let cells = buildWelcomeScene(small);
+    cells = new Set([...cells, ...fromList(welcomePattern('rpentomino', WELCOME_GENESIS.x, WELCOME_GENESIS.y))]);
+    let generation = 0;
+    const world = WELCOME_SHOTS.find((shot) => shot.name === 'world')!;
+    const times = [
+      ...Array.from({ length: 28 }, (_, i) => world.start + i / 8), world.end - 0.001,
+      ...Array.from({ length: 9 }, (_, i) => 15 + i / 8),
+    ];
+    const screens = [[1280, 720], [360, 780], [844, 390], [1280, 800]];
+    const coverages = screens.map(() => [] as number[]);
+    for (const seconds of times) {
+      while (generation < welcomeGeneration(seconds)) { cells = step(cells); generation++; }
+      const points = toList(cells);
+      const minX = Math.min(...points.map(([x]) => x)), maxX = Math.max(...points.map(([x]) => x));
+      const minY = Math.min(...points.map(([, y]) => y)), maxY = Math.max(...points.map(([, y]) => y));
+      screens.forEach(([width, height], index) => {
+        const coverage = screenCoverage(cells, seconds, width, height);
+        expect(coverage, `${seconds}s at ${width} × ${height}`).toBeGreaterThanOrEqual(0.6);
+        // The camera never exposes a bare strip beyond the field's 20-cell activity halo.
+        const camera = welcomeCamera(seconds, width, height);
+        expect(camera.x - width / camera.zoom / 2).toBeGreaterThanOrEqual(minX - 20);
+        expect(camera.x + width / camera.zoom / 2).toBeLessThanOrEqual(maxX + 20);
+        expect(camera.y - height / camera.zoom / 2).toBeGreaterThanOrEqual(minY - 20);
+        expect(camera.y + height / camera.zoom / 2).toBeLessThanOrEqual(maxY + 20);
+        coverages[index].push(coverage);
+      });
+    }
+    console.info(`Welcome ${small ? 'small' : 'full'} coverage min/max: ${screens.map(([w, h], i) => `${w}×${h} ${(Math.min(...coverages[i]) * 100).toFixed(1)}–${(Math.max(...coverages[i]) * 100).toFixed(1)}%`).join(', ')}`);
+  });
+
+  it.each([false, true])('preserves the genesis and magnifier performances (small=%s)', (small) => {
+    let cells = buildWelcomeScene(small);
+    let genesis = fromList(welcomePattern('rpentomino', WELCOME_GENESIS.x, WELCOME_GENESIS.y));
+    cells = new Set([...cells, ...genesis]);
+    let gun = fromList(welcomePattern('gosperglidergun', SHOWCASE_GUNS[0].x, SHOWCASE_GUNS[0].y));
+    for (let i = 0; i < WELCOME_PRE_ADVANCE; i++) gun = step(gun);
+    for (let generation = 0; generation <= welcomeGeneration(13.5); generation++) {
+      if (generation <= welcomeGeneration(2.5)) {
+        const onStage = (k: number) => Math.abs(keyX(k) - WELCOME_GENESIS.x) < 15 && Math.abs(keyY(k) - WELCOME_GENESIS.y) < 10;
+        expect(new Set([...cells].filter(onStage))).toEqual(new Set([...genesis].filter(onStage)));
+      }
+      if (generation >= welcomeGeneration(8)) {
+        const core = (k: number) => keyX(k) >= -155 && keyX(k) <= -115 && keyY(k) >= -110 && keyY(k) <= -90;
+        expect(new Set([...cells].filter(core))).toEqual(new Set([...gun].filter(core)));
+      }
+      cells = step(cells); genesis = step(genesis); gun = step(gun);
+    }
   });
 });
 
@@ -73,6 +157,11 @@ describe('welcome camera shot list', () => {
     expect(welcomeCamera(7, w, h).zoom).toBeGreaterThanOrEqual(4);
     expect(welcomeCamera(7, w, h).zoom).toBeLessThan(13);
     expect(welcomeCamera(12, w, h).zoom).toBe(44);
+    const reveal = welcomeCamera(WELCOME_SECONDS, w, h);
+    for (const [x, y] of toList(welcomeLettering())) {
+      expect(Math.abs((x - reveal.x) * reveal.zoom)).toBeLessThan(w / 2 - 8);
+      expect(Math.abs((y - reveal.y) * reveal.zoom)).toBeLessThan(h / 2 - 8);
+    }
   });
 
   it.each(['lens', 'dive'] as const)('has no camera jumps except declared, flashed whip cuts (%s)', (transition) => {

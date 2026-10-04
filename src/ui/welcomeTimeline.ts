@@ -26,7 +26,8 @@ export const WELCOME_SHOTS = [
 ] as const;
 export function welcomeBeat(seconds: number) { return Math.max(0, WELCOME_SHOTS.filter((shot) => seconds >= shot.start).length - 1); }
 export function welcomeWideZoom(width: number, height: number) {
-  return Math.max(0.45, Math.min(3.2, (width - 32) / WELCOME_WORLD.width, (height - 150) / WELCOME_WORLD.height));
+  // Fill either aspect ratio with the cross-shaped field while retaining the 260-cell title.
+  return Math.max(0.45, Math.min(width / 280, Math.max(width / WELCOME_WORLD.width, height / 640)));
 }
 export function welcomeTitleCamera(seconds: number) {
   return { x: -12 + Math.sin(seconds * 0.08) * 14, y: Math.sin(seconds * 0.11) * 8, zoom: 7 };

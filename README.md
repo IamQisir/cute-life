@@ -49,3 +49,9 @@ URL params for demos: `?play`, `?sprinkle`, `?zoom=8`.
 - `src/render/` camera, procedural pencil art, PixiJS world view, `organisms.ts` mid-zoom view
 - `src/audio/` music box and ambient pad (Web Audio, no assets)
 - `src/ui/` HTML HUD; `src/input.ts` pointer, wheel, keyboard
+
+## Credits
+
+Fonts: [Caveat](https://fonts.google.com/specimen/Caveat) and
+[Patrick Hand](https://fonts.google.com/specimen/Patrick+Hand), SIL Open Font
+License 1.1, self-hosted via [Fontsource](https://fontsource.org).

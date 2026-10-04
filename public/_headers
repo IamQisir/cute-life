@@ -1,0 +1,6 @@
+# Cloudflare reads this file from the deploy root (Vite copies public/ into dist/).
+# Files in /assets/ have content hashes in their names, so a given URL never
+# changes: browsers may keep them for a year without asking again.
+# index.html is not listed, so it keeps revalidating and picks up new deploys.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

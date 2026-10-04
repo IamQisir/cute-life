@@ -21,6 +21,7 @@ export interface HudActions {
   pickPattern(p: Pattern | null): void;
   toggleRecord(): void;
   share(): void;
+  openHelp(): void;
   setMode(mode: PlayableMode): void;
   /** Drag-and-drop from palette cards onto the canvas. */
   cardDrag: CardHandlers;
@@ -174,7 +175,11 @@ export class Hud {
     window.addEventListener('resize', () => {
       if (!this.modeMenu.hidden) this.closeModeMenu(true);
     });
-    topRight.append(this.modeBtn, this.modeMenu, this.recordBtn, button('share', a.share), this.followBtn, this.selectBtn, this.handBtn, this.soundBtn);
+    const helpBtn = button('?', a.openHelp, 'help-btn');
+    helpBtn.setAttribute('aria-label', 'help');
+    helpBtn.addEventListener('keydown', (e) => e.stopPropagation());
+    helpBtn.addEventListener('keyup', (e) => e.stopPropagation());
+    topRight.append(this.modeBtn, this.modeMenu, this.recordBtn, button('share', a.share, 'share-btn'), this.followBtn, this.selectBtn, this.handBtn, this.soundBtn, helpBtn);
 
     const palette = el('div', 'palette');
     this.palette = palette;

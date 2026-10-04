@@ -31,6 +31,7 @@ import { BattleHud } from './ui/battleHud';
 import type { CardHandlers } from './ui/patternCard';
 import { SelectionMenu, type StampEntry, openImportDialog, openStampOffer } from './ui/stamps';
 import { Hud } from './ui/hud';
+import { Onboarding } from './ui/onboarding';
 
 const POPULATION_CAP = 25000;
 const MAX_RECORD_SECONDS = 15;
@@ -106,6 +107,7 @@ async function main() {
     },
     toggleHand,
     toggleRecord,
+    openHelp,
     share() {
       if (mode === 'battle') shareReplay();
       else copyLink();
@@ -132,6 +134,13 @@ async function main() {
       if (p) hud.toast('click to place ~ R rotates ~ shift+click keeps stamping');
     },
   });
+
+  const onboarding = new Onboarding(() => mode);
+
+  /** Shared entry point for the help button and the future title-cell action. */
+  function openHelp() {
+    onboarding.openHelp();
+  }
 
   function refreshStatus() {
     hud.setStatus(sim.generation, sim.population);
@@ -478,6 +487,7 @@ async function main() {
       syncPalette();
       fitArena();
     }
+    onboarding.modeChanged();
   }
 
   function exitBattle() {
@@ -489,6 +499,7 @@ async function main() {
     hud.closeResult();
     Object.assign(cam, sandboxCam);
     if (fromChallengeHash(location.hash) || fromReplayHash(location.hash)) forgetSharedLink();
+    onboarding.modeChanged();
   }
 
   function recordReplay() {
@@ -873,6 +884,8 @@ async function main() {
   if (params.has('zoom')) cam.zoom = Number(params.get('zoom')) || cam.zoom;
   if (params.has('sprinkle')) shuffle();
   if (params.has('play')) setPlaying(true);
+
+  onboarding.start(Boolean(shared || offered || challenge || replayLink));
 
   // Handy for debugging and for future screenshot tooling.
   Object.assign(window, { cuteLife: { sim, cam, togglePlay, stepOnce, battle, enterBattle } });

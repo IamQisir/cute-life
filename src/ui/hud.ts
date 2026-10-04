@@ -86,12 +86,15 @@ export class Hud {
     const palette = el('div', 'palette');
     palette.classList.toggle('collapsed', isPaletteHidden());
     const top = el('div', 'pal-top');
-    const toggle = button(isPaletteHidden() ? 'stamps ▸' : '◂', () => {
+    // Only the arrow flips, so the button keeps its size and place.
+    const toggle = button(isPaletteHidden() ? '▸' : '◂', () => {
       const hidden = !palette.classList.contains('collapsed');
       palette.classList.toggle('collapsed', hidden);
-      toggle.textContent = hidden ? 'stamps ▸' : '◂';
+      toggle.textContent = hidden ? '▸' : '◂';
+      toggle.title = hidden ? 'show stamps' : 'hide stamps';
       setPaletteHidden(hidden);
     }, 'pal-toggle');
+    toggle.title = isPaletteHidden() ? 'show stamps' : 'hide stamps';
     top.append(el('div', 'label', 'stamps'), toggle);
     palette.append(top);
     const cell = WorldView.portrait('happy', 0);

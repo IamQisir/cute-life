@@ -79,8 +79,8 @@ html, body {
 .palette {
   position: absolute;
   left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
+  /* Anchored to the top (not centred), so folding sections doesn't move the header. */
+  top: 92px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -380,7 +380,7 @@ html, body {
 .palette { display: flex !important; flex-direction: column; gap: 6px; width: 196px; }
 .pal-top { display: flex; align-items: center; justify-content: space-between; padding: 0 2px; }
 .pal-top .label { text-align: left; }
-.btn.pal-toggle { font-size: 15px; padding: 1px 9px; }
+.btn.pal-toggle { font-size: 15px; padding: 1px 0; width: 32px; text-align: center; }
 .pal-section { display: flex; flex-direction: column; gap: 4px; }
 .pal-header {
   font: inherit;
@@ -402,9 +402,8 @@ html, body {
 .pal-body { display: none; grid-template-columns: repeat(2, 84px); gap: 8px; padding: 2px 0 6px; }
 .pal-section.open .pal-body { display: grid; }
 .pal-body .label { display: none; }
-/* Collapsed: only a small tab stays on screen. */
-.palette.collapsed { width: auto; overflow: visible; }
-.palette.collapsed .pal-section, .palette.collapsed .custom-area, .palette.collapsed .pal-top .label { display: none; }
+/* Collapsed: same width and position, only the header row stays. */
+.palette.collapsed .pal-section, .palette.collapsed .custom-area { display: none; }
 
 /* ---- custom stamps ---------------------------------------------------- */
 .selection-menu {

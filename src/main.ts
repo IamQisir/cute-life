@@ -54,6 +54,7 @@ async function main() {
     shuffle,
     clear() {
       sim.clear(performance.now());
+      forgetSharedLink();
       setPlaying(false);
       refreshStatus();
     },
@@ -131,6 +132,7 @@ async function main() {
       }
     }
     sim.addMany(pts, performance.now());
+    forgetSharedLink();
     refreshStatus();
   }
 
@@ -176,10 +178,18 @@ async function main() {
   let clipUrl = '';
   let shownSecond = -1;
 
+  /** Builds a link to the current scene. Leaves the address bar alone. */
   function shareLink(): string {
     const hash = toHash({ points: toList(sim.cells), cam: { x: cam.x, y: cam.y, zoom: cam.zoom } });
-    history.replaceState(null, '', hash);
-    return location.href;
+    return location.origin + location.pathname + hash;
+  }
+
+  /**
+   * The visitor changed a scene opened from a share link: drop the hash so a
+   * reload doesn't snap back to it. Just playing keeps it as the starting point.
+   */
+  function forgetSharedLink() {
+    if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   }
 
   async function copyLink() {
@@ -238,6 +248,7 @@ async function main() {
       const now = performance.now();
       const v = value ?? !sim.has(x, y);
       if (sim.set(x, y, v, now)) {
+        forgetSharedLink();
         if (now - lastPopAt > 90) {
           if (v) audio.pop(x, y);
           else audio.poof();
@@ -250,6 +261,7 @@ async function main() {
     stamp(x, y, keep) {
       if (!pattern) return false;
       sim.addMany(stampPoints(x, y), performance.now());
+      forgetSharedLink();
       audio.pop(x, y);
       refreshStatus();
       if (!keep) {

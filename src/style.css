@@ -35,10 +35,20 @@ html, body {
 #hud { position: fixed; inset: 0; pointer-events: none; }
 #hud > * { pointer-events: auto; }
 
-.title {
+/* The top grid owns all header space, including menus: no measured offsets. */
+#hud > .top-area {
   position: absolute;
-  top: 14px;
-  left: 20px;
+  inset: 12px 18px auto 20px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px 18px;
+  pointer-events: none;
+}
+.top-area > * { pointer-events: auto; }
+.title {
+  grid-column: 1;
+  grid-row: 1;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -52,11 +62,55 @@ html, body {
 .title span:last-of-type { color: var(--blue); }
 
 .top-right {
-  position: absolute;
-  top: 16px;
-  right: 18px;
+  grid-column: 3;
+  grid-row: 1;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+.top-right > .toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 18px;
+  padding: 5px 8px;
+  min-height: 38px;
+  white-space: nowrap;
+}
+.toolbar-icon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.rec .toolbar-icon { fill: var(--red); stroke: var(--red); }
+.mode-btn::after { content: '▾'; font-size: 14px; }
+.settings-btn { position: relative; }
+.settings-btn.has-active-tool::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 9px;
+  height: 9px;
+  background: var(--red);
+  border: 1.5px solid var(--paper);
+  border-radius: 50%;
+}
+.top-menus { grid-column: 3; grid-row: 2; min-width: 0; }
+.top-menus:not(:has(.paper-menu:not([hidden]))) { display: none; }
+.top-menus:has(.settings-menu:not([hidden])) { justify-self: end; }
+.top-right .btn:focus-visible, .paper-menu .btn:focus-visible {
+  outline: 2px dashed var(--blue);
+  outline-offset: 3px;
 }
 
 .btn {
@@ -75,6 +129,57 @@ html, body {
 .btn:active { transform: scale(0.95); }
 .btn.on { background: #fde6b8; }
 .btn.big { font-size: 26px; padding: 4px 22px; color: var(--red); border-color: var(--red); }
+
+/* Menus occupy a grid row below the toolbar; the battle head never sits behind them. */
+.paper-menu {
+  position: relative;
+  z-index: 6;
+  width: min(350px, 100%);
+  max-height: min(360px, calc(100dvh - 150px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  overflow-y: auto;
+  touch-action: pan-y;
+  background: #fffbef;
+  border: 2px solid var(--ink);
+  border-radius: var(--sketch);
+  box-shadow: 3px 4px 0 rgba(0, 0, 0, 0.08);
+}
+.paper-menu[hidden] { display: none; }
+.settings-menu { width: 220px; max-width: 100%; }
+.settings-menu .toolbar-btn { display: flex; align-items: center; gap: 10px; text-align: left; }
+.settings-menu .toolbar-label { display: inline; }
+.mode-card {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  background: #fffdf6;
+  border: 1.6px solid var(--ink-soft);
+  border-radius: var(--sketch-2);
+  cursor: pointer;
+}
+.mode-card:nth-child(even) { border-radius: var(--sketch); }
+.mode-card[aria-checked="true"] { background: #fde6b8; border-color: var(--ink); }
+.mode-card:hover:not(:disabled) { background: #fff6c9; }
+.mode-btn:focus-visible, .mode-card:focus-visible { outline: 2px dashed var(--blue); outline-offset: 3px; }
+.mode-card:disabled { color: var(--ink-soft); border-style: dashed; cursor: default; }
+.mode-copy { display: flex; flex-direction: column; min-width: 0; }
+.mode-name { font-family: 'Caveat', cursive; font-size: 27px; line-height: 1; }
+.mode-description { font-size: 16px; }
+.mode-soon { align-self: flex-start; margin-top: 3px; padding: 0 7px; font-size: 14px; background: var(--paper); border-radius: var(--sketch); }
+.mode-preview { display: flex; align-items: center; justify-content: center; flex: 0 0 64px; height: 54px; }
+.mode-preview canvas { width: 46px; height: 46px; }
+.mode-preview.battle canvas { width: 34px; height: 34px; }
+.mode-preview.battle canvas:first-child { transform: rotate(-10deg); }
+.mode-preview.battle canvas:last-child { transform: rotate(10deg); }
 
 .palette {
   position: absolute;
@@ -187,18 +292,8 @@ html, body {
 .sleeper.br .z { left: 0; }
 .sleeper.bl .z { right: 0; }
 
-.btn.rec::before {
-  content: '';
-  display: inline-block;
-  width: 9px;
-  height: 9px;
-  margin-right: 6px;
-  border-radius: 50%;
-  background: var(--red);
-  vertical-align: 1px;
-}
 .btn.rec.live { background: #fde0da; border-color: var(--red); color: var(--red); }
-.btn.rec.live::before { animation: blink 1s steps(2) infinite; }
+.btn.rec.live .toolbar-icon { animation: blink 1s steps(2) infinite; }
 
 .modal-back {
   position: fixed;
@@ -238,27 +333,30 @@ html, body {
 #hud > .battle-hud { position: absolute; inset: 0; pointer-events: none; }
 .battle-hud > * { pointer-events: auto; }
 .battle-head {
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
   pointer-events: none;
-  width: min(520px, calc(100% - 32px));
+  width: min(520px, 100%);
+  text-align: center;
 }
+.battle-head[hidden] { display: none; }
+.battle-title, .battle-sub, .score-gen { max-width: 100%; min-width: 0; }
 .battle-title {
   font-family: 'Caveat', cursive;
   font-weight: 700;
   font-size: 38px;
   line-height: 1;
   color: var(--ink);
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   transform: rotate(-1deg);
 }
-.battle-sub { font-size: 18px; color: var(--ink-soft); white-space: nowrap; }
+.battle-sub { font-size: 18px; color: var(--ink-soft); overflow-wrap: anywhere; line-height: 1.2; }
 .scoreboard { width: 100%; text-align: center; margin-top: 2px; }
 .score-row { display: flex; align-items: center; gap: 10px; }
 .score { font-family: 'Caveat', cursive; font-weight: 700; font-size: 26px; min-width: 76px; }
@@ -275,7 +373,7 @@ html, body {
   overflow: hidden;
 }
 .score-bar .red { height: 100%; background: #ec8f7b; transition: width 0.2s ease; }
-.score-gen { font-size: 15px; color: var(--ink-soft); }
+.score-gen { font-size: 15px; color: var(--ink-soft); overflow-wrap: anywhere; }
 
 /* Wide: controls on the right, vertically centred (the shared palette is on the left). */
 .battle-side {
@@ -336,8 +434,6 @@ html, body {
   .side-group .btn.big { font-size: 20px; }
   .stars { font-size: 22px; }
   .name-input { width: 160px; }
-  .battle-title { font-size: 26px; }
-  .battle-head { top: 56px; }
 }
 
 .result-card {
@@ -480,8 +576,6 @@ html, body {
 }
 
 @media (max-width: 720px) {
-  .title { font-size: 30px; }
-  .title img { width: 38px; height: 38px; }
   .palette {
     display: flex;
     top: auto;
@@ -505,10 +599,44 @@ html, body {
   .card canvas { width: 40px !important; height: 40px !important; }
   .card div { font-size: 14px; }
   .speed span { display: none; }
-  .top-right { max-width: 62%; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-  .top-right .btn { font-size: 15px; padding: 2px 8px; }
   .hint { display: none; }
   .sleeper { display: none; }
   .btn { font-size: 17px; padding: 3px 10px; }
   .status { font-size: 28px; }
 }
+
+/* Medium: logo + toolbar share a row; menus and battle head each get the next row.
+   This tier is deliberately independent of the 900px arena/palette breakpoint. */
+@media (max-width: 1399px) {
+  #hud > .top-area { grid-template-columns: auto minmax(0, 1fr); gap: 10px 14px; }
+  .top-right { grid-column: 2; }
+  .top-menus { grid-column: 2; justify-self: stretch; }
+  .battle-head { grid-column: 1 / -1; grid-row: 3; }
+  .battle-title { font-size: 32px; }
+}
+@media (min-width: 721px) and (max-width: 899px) {
+  .title { font-size: 30px; gap: 4px; }
+  .title img { width: 38px; height: 38px; }
+  .top-right > .toolbar-btn { font-size: 16px; padding: 5px 6px; gap: 4px; }
+  .top-right { gap: 6px; }
+}
+/* Narrow: the cell is the logo, five icons fit across even at 320px.
+   Recording time remains visible; wrapping expands row one before anything below it. */
+@media (max-width: 720px) {
+  #hud > .top-area { inset: 10px 12px auto; gap: 8px; }
+  .title { gap: 0; }
+  .title span { display: none; }
+  .title img { width: 32px; height: 32px; }
+  .top-right { gap: 5px; }
+  .top-right > .toolbar-btn { min-height: 36px; padding: 5px 6px; gap: 3px; font-size: 15px; }
+  .top-right .toolbar-label { display: none; }
+  .top-right .rec.live .toolbar-label { display: inline; font-size: 13px; }
+  .top-menus { grid-column: 1 / -1; }
+  .battle-head { width: min(460px, 100%); }
+  .battle-title { font-size: clamp(24px, 4.5vw, 30px); }
+  .battle-sub { font-size: 15px; }
+  .score { font-size: 22px; min-width: 60px; }
+  .score-row { gap: 6px; }
+  .score-gen { font-size: 13px; }
+}
+.hint { white-space: pre-line; }

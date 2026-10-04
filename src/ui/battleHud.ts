@@ -65,12 +65,15 @@ export class BattleHud {
     this.head.append(this.title, this.sub, this.board);
     this.nameInput.placeholder = 'your name (optional)';
     this.nameInput.maxLength = 24;
-    this.root.append(this.head, this.side, this.card);
+    // Participate in the same grid as the logo, toolbar and menus.
+    parent.querySelector('.top-area')!.append(this.head);
+    this.root.append(this.side, this.card);
     parent.append(this.root);
   }
 
   show(on: boolean) {
     this.root.style.display = on ? '' : 'none';
+    this.head.hidden = !on;
   }
 
   /** Free screen area for the arena, between the HUD panels (CSS pixels). */

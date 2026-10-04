@@ -1,9 +1,14 @@
-// Battle HUD: phase title, red/blue scoreboard, per-phase controls and the
-// result card. Pure DOM; BattleMode owns the state, main.ts wires actions.
+// Battle HUD. Wide screens: structure palette on the left, controls on the
+// right, title and scoreboard on top, so the arena gets the whole middle.
+// Narrow screens stack palette and controls below the arena (see style.css).
+// Pure DOM; BattleMode owns the state, main.ts wires actions.
 
 import type { Stars } from '../battle/ai';
 import { ARENA_SIZES, type ArenaSize } from '../battle/arena';
 import type { BattleMode } from '../battle/mode';
+import { BATTLE_PATTERN_NAMES, PATTERNS, type Pattern, cellCount } from '../life/patterns';
+import { WorldView } from '../render/world';
+import { type CardHandlers, patternCard } from './patternCard';
 
 export interface BattleActions {
   ready(): void;
@@ -21,7 +26,11 @@ export interface BattleActions {
   togglePause(): void;
   finishNow(): void;
   setSpeed(genPerSec: number): void;
+  /** Palette cards: click to select a stamp, or drag onto the arena. */
+  cards: CardHandlers;
 }
+
+const BATTLE_PATTERNS: Pattern[] = BATTLE_PATTERN_NAMES.map((n) => PATTERNS.find((p) => p.name === n)!);
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -42,6 +51,7 @@ function button(text: string, onClick: () => void, cls = ''): HTMLButtonElement 
 
 export class BattleHud {
   readonly root = el('div', 'battle-hud');
+  private head = el('div', 'battle-head');
   private title = el('div', 'battle-title');
   private sub = el('div', 'battle-sub');
   private board = el('div', 'scoreboard');
@@ -50,9 +60,12 @@ export class BattleHud {
   private bar = el('div', 'score-bar');
   private redBar = el('div', 'red');
   private gen = el('div', 'score-gen');
-  private bottom = el('div', 'battle-bottom');
+  readonly palette = el('div', 'battle-palette');
+  readonly side = el('div', 'battle-side');
   private card = el('div', 'result-card');
   private nameInput = el('input', 'name-input');
+  private cards = new Map<Pattern, HTMLElement>();
+  private paletteTeam = 0;
   private lastKey = '';
 
   constructor(parent: HTMLElement, private a: BattleActions) {
@@ -60,9 +73,10 @@ export class BattleHud {
     const row = el('div', 'score-row');
     row.append(this.redNum, this.bar, this.blueNum);
     this.board.append(row, this.gen);
+    this.head.append(this.title, this.sub, this.board);
     this.nameInput.placeholder = 'your name (optional)';
     this.nameInput.maxLength = 24;
-    this.root.append(this.title, this.sub, this.board, this.bottom, this.card);
+    this.root.append(this.head, this.palette, this.side, this.card);
     parent.append(this.root);
   }
 
@@ -70,7 +84,29 @@ export class BattleHud {
     this.root.style.display = on ? '' : 'none';
   }
 
-  /** Re-render from the battle state. Controls are rebuilt only when the phase changes. */
+  /** Highlight the card whose pattern is currently the stamp. */
+  setPicked(p: Pattern | null) {
+    for (const [q, c] of this.cards) c.classList.toggle('on', q === p);
+  }
+
+  /** Free screen area for the arena, between the HUD panels (CSS pixels). */
+  freeArea(w: number, h: number): { left: number; top: number; right: number; bottom: number } {
+    const pad = 14;
+    const area = { left: pad, top: this.head.getBoundingClientRect().bottom + pad, right: w - pad, bottom: h - pad };
+    const wide = w >= 900;
+    for (const panel of [this.palette, this.side]) {
+      const r = panel.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (wide) {
+        if (r.right < w / 2) area.left = Math.max(area.left, r.right + pad);
+        else area.right = Math.min(area.right, r.left - pad);
+      } else {
+        area.bottom = Math.min(area.bottom, r.top - pad);
+      }
+    }
+    return area;
+  }
+
   render(b: BattleMode) {
     const o = b.opponent;
     const vs = o.kind === 'ai' ? `vs AI ${'★'.repeat(o.stars)}` : o.kind === 'challenge' ? `vs ${o.name || 'a friend'}` : 'replay';
@@ -78,35 +114,25 @@ export class BattleHud {
     const { red, blue } = b.sim.territory;
     const cells = b.sim.score;
 
-    switch (b.phase) {
-      case 'deploy':
-        this.title.textContent = b.myTeam === 1 ? 'deploy your red army' : 'deploy your blue army';
-        this.sub.textContent = `${b.budgetLeft} of ${b.cfg.budget} cells left · ${b.cfg.width}×${b.cfg.height} · ${vs}`;
-        break;
-      case 'thinking':
-        this.title.textContent = 'the AI is thinking...';
-        this.sub.textContent = vs;
-        break;
-      case 'reveal':
-        this.title.textContent = 'ready... fight!';
-        this.sub.textContent = vs;
-        break;
-      case 'battle':
-        this.title.textContent = b.paused ? 'paused' : 'fight!';
-        this.sub.textContent = vs;
-        break;
-      case 'result':
-        this.title.textContent = '';
-        this.sub.textContent = vs;
-        break;
-    }
+    const titles: Record<typeof b.phase, string> = {
+      deploy: b.myTeam === 1 ? 'deploy your red army' : 'deploy your blue army',
+      thinking: 'the AI is thinking...',
+      reveal: 'ready... fight!',
+      battle: b.paused ? 'paused' : 'fight!',
+      result: '',
+    };
+    this.title.textContent = titles[b.phase];
+    this.sub.textContent =
+      b.phase === 'deploy' ? `${b.budgetLeft} of ${b.cfg.budget} cells left · ${b.cfg.width}×${b.cfg.height} · ${vs}` : vs;
 
     const showBoard = b.phase === 'reveal' || b.phase === 'battle' || b.phase === 'result';
-    this.board.style.visibility = showBoard ? 'visible' : 'hidden';
+    this.board.style.display = showBoard ? '' : 'none';
     this.redNum.textContent = `red ${red}`;
     this.blueNum.textContent = `${blue} blue`;
     this.redBar.style.width = `${red + blue ? (100 * red) / (red + blue) : 50}%`;
     this.gen.textContent = `territory · generation ${b.sim.generation} / ${b.cfg.generations} · cells ${cells.red} : ${cells.blue}`;
+
+    this.renderPalette(b);
 
     const key = `${b.phase}|${o.kind}|${o.kind === 'ai' ? o.stars : ''}|${b.paused}|${b.army.length > 0}|${b.myTeam}|${b.size}`;
     if (key !== this.lastKey) {
@@ -115,15 +141,36 @@ export class BattleHud {
     }
   }
 
+  private renderPalette(b: BattleMode) {
+    const deploying = b.phase === 'deploy';
+    this.palette.style.display = deploying ? '' : 'none';
+    if (!deploying) return;
+    if (this.paletteTeam !== b.myTeam) {
+      // Cards are drawn with the player's team colour.
+      this.paletteTeam = b.myTeam;
+      this.palette.replaceChildren(el('div', 'label', 'your army'));
+      this.cards.clear();
+      const cell = WorldView.teamPortrait(b.myTeam);
+      for (const p of BATTLE_PATTERNS) {
+        const card = patternCard(p, cell, this.a.cards, true);
+        this.cards.set(p, card);
+        this.palette.append(card);
+      }
+    }
+    for (const [p, card] of this.cards) card.classList.toggle('off', cellCount(p) > b.budgetLeft);
+  }
+
   private buildControls(b: BattleMode) {
     const o = b.opponent;
-    this.bottom.replaceChildren();
+    this.side.replaceChildren();
     this.card.replaceChildren();
     this.card.style.display = 'none';
-    const row = el('div', 'controls');
 
     if (b.phase === 'deploy') {
       if (o.kind === 'ai') {
+        const sizes = el('div', 'side-group sizes');
+        sizes.append(el('div', 'label', 'arena'));
+        for (const size of ARENA_SIZES) sizes.append(button(size, () => this.a.setSize(size), size === b.size ? 'on' : ''));
         const stars = el('div', 'stars');
         stars.title = 'AI difficulty';
         for (let i = 1; i <= 5; i++) {
@@ -131,22 +178,17 @@ export class BattleHud {
           s.addEventListener('click', () => this.a.setStars(i as Stars));
           stars.append(s);
         }
-        const sizes = el('div', 'controls sizes');
-        for (const size of ARENA_SIZES) {
-          sizes.append(button(size, () => this.a.setSize(size), size === b.size ? 'on' : ''));
-        }
-        this.bottom.append(sizes, stars);
+        const ai = el('div', 'side-group');
+        ai.append(el('div', 'label', 'AI'), stars);
+        this.side.append(sizes, ai);
       }
-      row.append(
-        button('ready!', this.a.ready, 'big'),
-        button('random', this.a.random),
-        button('clear', this.a.clear),
-      );
-      this.bottom.append(row);
+      const go = el('div', 'side-group');
+      go.append(button('ready!', this.a.ready, 'big'), button('random', this.a.random), button('clear', this.a.clear));
+      this.side.append(go);
       if (b.myTeam === 1 && o.kind === 'ai' && b.army.length > 0) {
-        const share = el('div', 'controls challenge-row');
+        const share = el('div', 'side-group');
         share.append(this.nameInput, button('challenge a friend', () => this.a.challenge(this.nameInput.value)));
-        this.bottom.append(share);
+        this.side.append(share);
       }
       return;
     }
@@ -160,8 +202,9 @@ export class BattleHud {
       slider.value = String(b.genPerSec);
       slider.addEventListener('input', () => this.a.setSpeed(Number(slider.value)));
       speed.append(el('span', '', 'slow'), slider, el('span', '', 'fast'));
-      row.append(button(b.paused ? 'resume' : 'pause', this.a.togglePause), speed, button('skip to end', this.a.finishNow));
-      this.bottom.append(row);
+      const g = el('div', 'side-group');
+      g.append(button(b.paused ? 'resume' : 'pause', this.a.togglePause), speed, button('skip to end', this.a.finishNow));
+      this.side.append(g);
       return;
     }
 

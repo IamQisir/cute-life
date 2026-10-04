@@ -17,6 +17,7 @@ import { fromHash, toHash } from './share/link';
 import { Recorder, type Recording } from './share/recorder';
 import { Sim } from './sim';
 import { BattleHud } from './ui/battleHud';
+import type { CardHandlers } from './ui/patternCard';
 import { Hud } from './ui/hud';
 
 const POPULATION_CAP = 25000;
@@ -88,10 +89,13 @@ async function main() {
       if (mode === 'battle') exitBattle();
       else enterBattle();
     },
+    cardDrag: {
+      pick: () => {},
+      drag: (p, x, y) => cardDrag.drag(p, x, y),
+      drop: (p, x, y) => cardDrag.drop(p, x, y),
+    },
     pickPattern(p) {
-      pattern = p;
-      rotation = 0;
-      hud.setPattern(p);
+      selectPattern(p);
       if (p) hud.toast('click to place ~ R rotates ~ shift+click keeps stamping');
     },
   });
@@ -159,6 +163,55 @@ async function main() {
     for (let i = 0; i < rotation; i++) pts = pts.map(([px, py]) => [-py, px]);
     return pts.map(([px, py]) => [px + x, py + y]);
   }
+
+  /** The current stamp, shown highlighted in whichever palette is visible. */
+  function selectPattern(p: Pattern | null) {
+    if (p !== pattern) rotation = 0;
+    pattern = p;
+    hud.setPattern(mode === 'sandbox' ? p : null);
+    battleHud.setPicked(mode === 'battle' ? p : null);
+  }
+
+  /** Drop the current stamp at a cell, in whichever mode is active. */
+  function placeStampAt(x: number, y: number, keep: boolean) {
+    if (!pattern) return;
+    const pts = stampPoints(x, y);
+    if (mode === 'battle') {
+      const problem = battle.placeStamp(pts, performance.now());
+      if (problem === 'zone') hud.toast('keep it inside your zone ~');
+      else if (problem === 'budget') hud.toast('not enough cells left for that one');
+      else audio.pop(x, y);
+    } else {
+      sim.addMany(pts, performance.now());
+      forgetSharedLink();
+      audio.pop(x, y);
+      refreshStatus();
+    }
+    if (!keep) selectPattern(null);
+  }
+
+  // Dragging a palette card onto the canvas (the canvas fills the window, so
+  // client coordinates are canvas coordinates).
+  const cardDrag: CardHandlers = {
+    pick(p) {
+      selectPattern(pattern === p ? null : p);
+    },
+    drag(p, cx, cy) {
+      audio.unlock();
+      if (pattern !== p) selectPattern(p);
+      hover = cam.cellAt(cx, cy);
+    },
+    drop(p, cx, cy) {
+      if (pattern !== p) selectPattern(p);
+      if (document.elementFromPoint(cx, cy) === app.canvas) {
+        const [x, y] = cam.cellAt(cx, cy);
+        placeStampAt(x, y, false);
+      } else {
+        selectPattern(null);
+      }
+      hover = null;
+    },
+  };
 
   // ---- sharing -------------------------------------------------------------
 
@@ -286,10 +339,10 @@ async function main() {
   let framedPhase = '';
   const battle = new BattleMode({
     changed() {
-      // Deployment needs room for more controls below the arena than the battle does.
-      const deploying = battle.phase === 'deploy' || battle.phase === 'thinking';
-      if (mode === 'battle' && String(deploying) !== framedPhase) fitArena();
       battleHud.render(battle);
+      // Panels change with the phase, so the free space for the arena does too.
+      if (battle.phase !== 'deploy' && pattern) selectPattern(null);
+      if (mode === 'battle' && battle.phase !== framedPhase) fitArena();
     },
     births: (pts) => audio.births(pts),
     resized: () => fitArena(),
@@ -332,6 +385,7 @@ async function main() {
     togglePause: () => battle.togglePause(),
     finishNow: () => battle.finishNow(performance.now()),
     setSpeed: (v) => (battle.genPerSec = v),
+    cards: cardDrag,
   });
   battleHud.show(false);
 
@@ -351,17 +405,16 @@ async function main() {
   }
 
   /** Frame the arena between the battle title and the bottom controls. */
+  /** Frame the arena in the space the HUD panels leave free. */
   function fitArena() {
     const { width, height } = battle.cfg;
-    // Room for title + scoreboard above; below, deployment has sizes, stars,
-    // buttons and the challenge row, while the battle only has one row.
-    const deploying = battle.phase === 'deploy' || battle.phase === 'thinking';
-    framedPhase = String(deploying);
-    const top = cam.w < 720 ? 170 : 150;
-    const bottom = deploying ? 210 : 90;
-    cam.zoom = Math.max(6, Math.min((cam.w - 32) / width, (cam.h - top - bottom) / height));
-    cam.x = width / 2;
-    cam.y = height / 2 - (top - bottom) / 2 / cam.zoom;
+    framedPhase = battle.phase;
+    const a = battleHud.freeArea(cam.w, cam.h);
+    cam.zoom = Math.max(4, Math.min((a.right - a.left) / width, (a.bottom - a.top) / height));
+    const cx = (a.left + a.right) / 2;
+    const cy = (a.top + a.bottom) / 2;
+    cam.x = width / 2 - (cx - cam.w / 2) / cam.zoom;
+    cam.y = height / 2 - (cy - cam.h / 2) / cam.zoom;
   }
 
   function enterBattle(opponent?: Opponent) {
@@ -369,18 +422,18 @@ async function main() {
     if (mode === 'sandbox') {
       sandboxCam = { x: cam.x, y: cam.y, zoom: cam.zoom };
       setPlaying(false);
-      pattern = null;
-      hud.setPattern(null);
     }
+    selectPattern(null);
     mode = 'battle';
     hud.setMode('battle');
     battleHud.show(true);
-    fitArena();
+    framedPhase = '';
     const keepStars = battle.opponent.kind === 'ai' ? battle.opponent.stars : 3;
     battle.start(opponent ?? { kind: 'ai', stars: keepStars }, t);
   }
 
   function exitBattle() {
+    selectPattern(null);
     mode = 'sandbox';
     hud.setMode('sandbox');
     battleHud.show(false);
@@ -430,17 +483,10 @@ async function main() {
     },
     stamp(x, y, keep) {
       if (!pattern) return false;
-      sim.addMany(stampPoints(x, y), performance.now());
-      forgetSharedLink();
-      audio.pop(x, y);
-      refreshStatus();
-      if (!keep) {
-        pattern = null;
-        hud.setPattern(null);
-      }
+      placeStampAt(x, y, keep);
       return true;
     },
-    hasStamp: () => mode === 'sandbox' && pattern !== null,
+    hasStamp: () => pattern !== null && (mode === 'sandbox' || battle.phase === 'deploy'),
     isHand: () => hand,
     onFirstGesture() {
       audio.unlock();
@@ -465,8 +511,7 @@ async function main() {
     },
     toggleHand,
     cancelStamp() {
-      pattern = null;
-      hud.setPattern(null);
+      selectPattern(null);
     },
     rotateStamp() {
       rotation = (rotation + 1) % 4;
@@ -525,7 +570,12 @@ async function main() {
       battle.update(t);
       territoryView.update(cam, battle.sim);
       arenaView.update(cam, battle.layout(), battle.arenaState());
-      view.update(t, battle.sim, cam, null, battle.phase === 'deploy');
+      let ghost = null;
+      if (pattern && hover && battle.phase === 'deploy') {
+        const points = stampPoints(hover[0], hover[1]);
+        ghost = { points, team: battle.myTeam, invalid: battle.stampProblem(points) !== null };
+      }
+      view.update(t, battle.sim, cam, ghost, battle.phase === 'deploy');
       return;
     }
     territoryView.update(cam, null);

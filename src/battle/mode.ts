@@ -139,6 +139,27 @@ export class BattleMode {
     return v;
   }
 
+  /** Why a stamp can't be placed, or null if it can. */
+  stampProblem(points: Pt[]): 'zone' | 'budget' | null {
+    if (this.phase !== 'deploy') return 'zone';
+    const zone = deployZone(this.cfg, this.myTeam);
+    if (points.some(([x, y]) => x < zone.x0 || x > zone.x1 || y < zone.y0 || y > zone.y1)) return 'zone';
+    const have = new Set(this.army.map(([x, y]) => `${x},${y}`));
+    const fresh = points.filter(([x, y]) => !have.has(`${x},${y}`));
+    return fresh.length > this.budgetLeft ? 'budget' : null;
+  }
+
+  /** Add a whole structure to the army (cells already there are kept). */
+  placeStamp(points: Pt[], now: number): 'zone' | 'budget' | null {
+    const problem = this.stampProblem(points);
+    if (problem) return problem;
+    const have = new Set(this.army.map(([x, y]) => `${x},${y}`));
+    this.army = [...this.army, ...points.filter(([x, y]) => !have.has(`${x},${y}`))];
+    this.sim.showArmy(this.myTeam, this.army, now);
+    this.hooks.changed();
+    return null;
+  }
+
   randomArmy(now: number) {
     if (this.phase !== 'deploy') return;
     this.army = chooseDeployment(this.cfg, this.myTeam, 1, Math.floor(Math.random() * 2 ** 31));

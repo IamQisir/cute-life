@@ -34,6 +34,7 @@ export class SpritePool {
     s.visible = true;
     s.alpha = 1;
     s.rotation = 0;
+    s.tint = 0xffffff;
     return s;
   }
 

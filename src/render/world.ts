@@ -57,6 +57,10 @@ function buildTextures(): Textures {
 
 export interface StampPreview {
   points: [number, number][];
+  /** Battle: draw the ghost in this team's colours. */
+  team?: 1 | 2;
+  /** Battle: the stamp doesn't fit here (outside the zone or over budget). */
+  invalid?: boolean;
 }
 
 export class WorldView {
@@ -92,6 +96,11 @@ export class WorldView {
   /** Canvas of a happy cell, for use in the DOM (icons, decorations). */
   static portrait(mood: Mood, palette = 0): HTMLCanvasElement {
     return drawCell(PALETTES[palette], 1000 + palette * 97, mood);
+  }
+
+  /** Canvas of a happy cell in a team's colours (battle palette). */
+  static teamPortrait(team: 1 | 2): HTMLCanvasElement {
+    return drawCell(TEAM_PALETTES[team], 5000 + team * 31, 'happy');
   }
 
   resize(w: number, h: number) {
@@ -256,12 +265,14 @@ export class WorldView {
     this.stampPool.begin();
     if (stamp) {
       for (const [x, y] of stamp.points) {
-        const v = cellHash(x, y) % TEAM_BASE;
+        const h = cellHash(x, y);
+        const v = stamp.team ? pick(0, h, stamp.team) : h % TEAM_BASE;
         const [sx, sy] = cam.toScreen(x + 0.5, y + 0.5);
-        const s = this.stampPool.next(faces ? this.tx.faces[v].happy : this.tx.dots[v]);
+        const s = this.stampPool.next(faces ? this.tx.faces[v][stamp.invalid ? 'crowded' : 'happy'] : this.tx.dots[v]);
         s.position.set(sx, sy);
         s.scale.set(scale);
-        s.alpha = 0.45;
+        s.alpha = stamp.invalid ? 0.25 : 0.5;
+        s.tint = stamp.invalid ? 0x999999 : 0xffffff;
       }
     }
     this.stampPool.end();

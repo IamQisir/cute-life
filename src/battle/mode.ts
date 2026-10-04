@@ -8,13 +8,13 @@ import {
   type ArenaConfig,
   type ArenaSize,
   BLUE,
-  LEGACY_PRESETS,
   type Pt,
   RED,
   type Team,
   type Winner,
   decideWinner,
   deployZone,
+  presetFor,
   placeArmies,
   simulateBattle,
 } from './arena';
@@ -29,7 +29,7 @@ export type Opponent =
 
 /** 'garden' is current; 'legacy' replays links made under the earlier territory rules. */
 export type Rules = 'garden' | 'legacy';
-const PRESETS: Record<Rules, Record<ArenaSize, ArenaConfig>> = { garden: ARENA_PRESETS, legacy: LEGACY_PRESETS };
+
 
 export type Phase = 'deploy' | 'thinking' | 'reveal' | 'battle' | 'result';
 
@@ -64,10 +64,10 @@ const FINALE_GEN_PER_SEC = 4;
 const MAX_STEPS_PER_FRAME = 4;
 
 export class BattleMode {
-  /** Battles against the AI use the large arena; smaller presets only replay old links. */
-  size: ArenaSize = 'large';
+  /** Battles against the AI use the xl arena; smaller presets only replay old links. */
+  size: ArenaSize = 'xl';
   rules: Rules = 'garden';
-  cfg: ArenaConfig = ARENA_PRESETS.large;
+  cfg: ArenaConfig = ARENA_PRESETS.xl;
   sim = new BattleSim(this.cfg);
   phase: Phase = 'deploy';
   opponent: Opponent = { kind: 'ai', stars: 3 };
@@ -124,7 +124,7 @@ export class BattleMode {
     this.opponent = opponent;
     // Challenges and replays bring their own arena size and rules; the AI uses current rules.
     const rules: Rules = opponent.kind === 'ai' ? 'garden' : opponent.rules;
-    const size = opponent.kind === 'ai' ? 'large' : opponent.size;
+    const size = opponent.kind === 'ai' ? 'xl' : opponent.size;
     if (rules !== this.rules || size !== this.size) this.applySize(size, rules);
     this.outcome = null;
     this.paused = false;
@@ -200,7 +200,8 @@ export class BattleMode {
   private applySize(size: ArenaSize, rules: Rules) {
     this.size = size;
     this.rules = rules;
-    this.cfg = PRESETS[rules][size];
+    // Links are validated against an existing preset before they get here.
+    this.cfg = presetFor(rules, size) ?? ARENA_PRESETS.xl;
     this.sim = new BattleSim(this.cfg);
     this.hooks.resized();
   }

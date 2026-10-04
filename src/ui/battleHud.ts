@@ -5,10 +5,6 @@
 
 import type { Stars } from '../battle/ai';
 import type { BattleMode } from '../battle/mode';
-import { BATTLE_PATTERN_NAMES, PATTERNS, type Pattern, cellCount } from '../life/patterns';
-import { WorldView } from '../render/world';
-import { type CardHandlers, patternCard } from './patternCard';
-import { type StampEntry, stampSection } from './stamps';
 
 export interface BattleActions {
   ready(): void;
@@ -25,11 +21,7 @@ export interface BattleActions {
   togglePause(): void;
   finishNow(): void;
   setSpeed(genPerSec: number): void;
-  /** Palette cards: click to select a stamp, or drag onto the arena. */
-  cards: CardHandlers;
 }
-
-const BATTLE_PATTERNS: Pattern[] = BATTLE_PATTERN_NAMES.map((n) => PATTERNS.find((p) => p.name === n)!);
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -59,16 +51,13 @@ export class BattleHud {
   private bar = el('div', 'score-bar');
   private redBar = el('div', 'red');
   private gen = el('div', 'score-gen');
-  readonly palette = el('div', 'battle-palette');
   readonly side = el('div', 'battle-side');
   private card = el('div', 'result-card');
   private nameInput = el('input', 'name-input');
-  private cards = new Map<Pattern, HTMLElement>();
-  private paletteTeam = 0;
-  private stamps: StampEntry[] = [];
   private lastKey = '';
 
-  constructor(parent: HTMLElement, private a: BattleActions) {
+  /** `palette` is the shared stamp palette (left), used to frame the arena. */
+  constructor(parent: HTMLElement, private a: BattleActions, private palette: HTMLElement) {
     this.bar.append(this.redBar);
     const row = el('div', 'score-row');
     row.append(this.redNum, this.bar, this.blueNum);
@@ -76,23 +65,12 @@ export class BattleHud {
     this.head.append(this.title, this.sub, this.board);
     this.nameInput.placeholder = 'your name (optional)';
     this.nameInput.maxLength = 24;
-    this.root.append(this.head, this.palette, this.side, this.card);
+    this.root.append(this.head, this.side, this.card);
     parent.append(this.root);
   }
 
   show(on: boolean) {
     this.root.style.display = on ? '' : 'none';
-  }
-
-  /** Custom stamps shown after the built-in structures (usable, not editable, here). */
-  setStamps(entries: StampEntry[]) {
-    this.stamps = entries;
-    this.paletteTeam = 0; // force a rebuild on the next render
-  }
-
-  /** Highlight the card whose pattern is currently the stamp. */
-  setPicked(p: Pattern | null) {
-    for (const [q, c] of this.cards) c.classList.toggle('on', q === p);
   }
 
   /** Free screen area for the arena, between the HUD panels (CSS pixels). */
@@ -147,34 +125,11 @@ export class BattleHud {
     this.redBar.style.width = `${red + blue ? (100 * red) / (red + blue) : 50}%`;
     this.gen.textContent = `${unit} · generation ${b.sim.generation} / ${b.cfg.generations} · cells ${cells.red} : ${cells.blue}`;
 
-    this.renderPalette(b);
-
     const key = `${b.phase}|${o.kind}|${o.kind === 'ai' ? o.stars : ''}|${b.paused}|${b.army.length > 0}|${b.myTeam}|${b.size}`;
     if (key !== this.lastKey) {
       this.lastKey = key;
       this.buildControls(b);
     }
-  }
-
-  private renderPalette(b: BattleMode) {
-    const deploying = b.phase === 'deploy';
-    this.palette.style.visibility = deploying ? 'visible' : 'hidden';
-    if (this.paletteTeam !== b.myTeam) {
-      // Cards are drawn with the player's team colour.
-      this.paletteTeam = b.myTeam;
-      this.palette.replaceChildren(el('div', 'label', 'your army'));
-      this.cards.clear();
-      const cell = WorldView.teamPortrait(b.myTeam);
-      for (const p of BATTLE_PATTERNS) {
-        const card = patternCard(p, cell, this.a.cards, true);
-        this.cards.set(p, card);
-        this.palette.append(card);
-      }
-      const custom = stampSection(this.stamps, cell, { cards: this.a.cards }, true);
-      this.palette.append(...custom.nodes);
-      for (const [p, card] of custom.cards) this.cards.set(p, card);
-    }
-    if (deploying) for (const [p, card] of this.cards) card.classList.toggle('off', cellCount(p) > b.budgetLeft);
   }
 
   private buildControls(b: BattleMode) {

@@ -1,5 +1,5 @@
 import { type Category, byCategory } from '../life/catalog';
-import type { Pattern } from '../life/patterns';
+import { type Pattern, cellCount } from '../life/patterns';
 import type { SoundMode } from '../audio/musicBox';
 import { WorldView } from '../render/world';
 import { type CardHandlers, patternCard } from './patternCard';
@@ -65,6 +65,8 @@ export class Hud {
   private cards = new Map<Pattern, HTMLElement>();
   private customCards = new Map<Pattern, HTMLElement>();
   private customArea = el('div', 'custom-area');
+  /** The stamp palette; also the battle's palette (cards show cell costs). */
+  readonly palette: HTMLElement;
   private selectBtn: HTMLButtonElement;
   private followBtn: HTMLButtonElement;
   private picked: Pattern | null = null;
@@ -80,13 +82,14 @@ export class Hud {
     const topRight = el('div', 'top-right');
     this.soundBtn = button('sound on', a.toggleSound);
     this.handBtn = button('move', a.toggleHand);
-    this.selectBtn = button('select', a.toggleSelect);
-    this.followBtn = button('follow', a.toggleFollow);
+    this.selectBtn = button('select', a.toggleSelect, 'sandbox-only');
+    this.followBtn = button('follow', a.toggleFollow, 'sandbox-only');
     this.recordBtn = button('record', a.toggleRecord, 'rec');
     this.battleBtn = button('battle!', a.toggleBattle, 'battle-btn');
     topRight.append(this.battleBtn, this.recordBtn, button('share', a.share), this.followBtn, this.selectBtn, this.handBtn, this.soundBtn);
 
     const palette = el('div', 'palette');
+    this.palette = palette;
     palette.classList.toggle('collapsed', isPaletteHidden());
     // The "stamps" title itself folds the whole palette (arrow like the sections).
     const top = el('button', 'pal-top');
@@ -106,7 +109,7 @@ export class Hud {
         const card = patternCard(p, cell, {
           ...a.cardDrag,
           pick: () => a.pickPattern(card.classList.contains('on') ? null : p),
-        }, false, `${p.fullName}: ${p.blurb}`);
+        }, true, `${p.fullName}: ${p.blurb}`);
         this.cards.set(p, card);
         return card;
       });
@@ -169,6 +172,18 @@ export class Hud {
     this.followBtn.classList.toggle('on', on);
   }
 
+  /** Battle deployment: grey out stamps that don't fit the cells left (null = no limit). */
+  setBudget(left: number | null) {
+    for (const [p, card] of [...this.cards, ...this.customCards]) {
+      card.classList.toggle('off', left !== null && cellCount(p) > left);
+    }
+  }
+
+  /** Hide the palette while a battle plays, keeping its space so the arena doesn't jump. */
+  setPaletteActive(on: boolean) {
+    this.palette.style.visibility = on ? 'visible' : 'hidden';
+  }
+
   setSelect(on: boolean) {
     this.selectBtn.classList.toggle('on', on);
   }
@@ -176,7 +191,7 @@ export class Hud {
   /** Rebuild the "my stamps" section of the sandbox palette. */
   setStamps(entries: StampEntry[], a: StampSectionActions) {
     const cell = WorldView.portrait('happy', 0);
-    const { nodes, cards } = stampSection(entries, cell, a, false, false);
+    const { nodes, cards } = stampSection(entries, cell, a, true, false);
     this.customArea.replaceChildren(paletteSection('mine', 'my stamps', entries.length, nodes, true));
     this.customCards = cards;
     this.setPattern(this.picked);

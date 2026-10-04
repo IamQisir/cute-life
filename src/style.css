@@ -78,10 +78,9 @@ html, body {
 
 /* A little paper menu, anchored below the whole toolbar when its buttons wrap. */
 .mode-btn { white-space: nowrap; }
+/* Placed right under the mode button by Hud.openModeMenu. */
 .mode-menu {
-  position: absolute;
-  top: calc(100% + 10px);
-  right: 0;
+  position: fixed;
   z-index: 6;
   width: min(350px, calc(100vw - 24px));
   display: flex;
@@ -556,7 +555,6 @@ html, body {
   .card div { font-size: 14px; }
   .speed span { display: none; }
   .top-right { max-width: 62%; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-  .mode-menu { right: -6px; }
   .top-right .btn { font-size: 15px; padding: 2px 8px; }
   .hint { display: none; }
   .sleeper { display: none; }

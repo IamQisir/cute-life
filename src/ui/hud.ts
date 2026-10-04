@@ -296,8 +296,13 @@ export class Hud {
   private openModeMenu() {
     this.modeMenu.hidden = false;
     this.modeBtn.setAttribute('aria-expanded', 'true');
-    // Leave room below wrapped toolbar rows, even on short, narrow screens.
-    this.modeMenu.style.maxHeight = `${Math.max(0, window.innerHeight - this.modeMenu.getBoundingClientRect().top - 12)}px`;
+    // Hang the menu right under the button, starting at its left edge, kept on screen.
+    const btn = this.modeBtn.getBoundingClientRect();
+    const top = btn.bottom + 6;
+    const left = Math.max(12, Math.min(btn.left, window.innerWidth - this.modeMenu.offsetWidth - 12));
+    this.modeMenu.style.top = `${top}px`;
+    this.modeMenu.style.left = `${left}px`;
+    this.modeMenu.style.maxHeight = `${Math.max(0, window.innerHeight - top - 12)}px`;
     this.modeMenu.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus();
   }
 

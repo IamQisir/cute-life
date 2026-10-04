@@ -335,6 +335,7 @@ html, body {
   .battle-side { bottom: 8px; flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 0 8px; }
   .battle-palette { bottom: 128px; flex-direction: row; overflow-x: auto; padding: 4px 10px; }
   .battle-palette .label, .side-group .label { display: none; }
+  .palette, .battle-palette { display: flex; }
   .battle-palette .card { flex: 0 0 auto; width: 62px; padding: 4px 2px 0; }
   .battle-palette .card canvas { width: 40px !important; height: 40px !important; }
   .side-group { flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; }
@@ -375,6 +376,71 @@ html, body {
   .result-title { font-size: 42px; }
 }
 
+/* ---- custom stamps ---------------------------------------------------- */
+.selection-menu {
+  position: fixed;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  background: #fffbef;
+  border: 1.6px solid var(--ink);
+  border-radius: var(--sketch);
+  box-shadow: 3px 4px 0 rgba(0, 0, 0, 0.08);
+  transform: rotate(-0.6deg);
+}
+.selection-menu .btn { font-size: 16px; padding: 2px 10px; }
+.selection-menu .btn.big { font-size: 20px; }
+.selection-count { font-size: 15px; color: var(--ink-soft); }
+.custom-area { display: contents; }
+/* Two columns so built-in and custom stamps fit without scrolling. */
+.palette, .battle-palette { display: grid; align-content: start; }
+.palette { grid-template-columns: repeat(2, 84px); }
+.battle-palette { grid-template-columns: repeat(2, 76px); }
+.palette .label, .battle-palette .label { grid-column: 1 / -1; }
+.palette .card, .battle-palette .card { transform: none; }
+.card { position: relative; }
+.card-tools {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  display: none;
+  gap: 4px;
+}
+.card:hover .card-tools { display: flex; }
+.card-tool {
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 4px;
+  background: #fffbef;
+  border: 1px solid var(--ink-soft);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.card-tool:hover { background: #fde6b8; }
+.import-card {
+  display: grid;
+  place-items: center;
+  min-height: 54px;
+  font-family: 'Caveat', cursive;
+  font-size: 22px;
+  color: var(--ink-soft);
+  border-style: dashed;
+}
+.stamp-modal .import-text {
+  width: 100%;
+  font: 15px ui-monospace, Menlo, monospace;
+  padding: 8px;
+  background: #fffdf6;
+  border: 1.6px solid var(--ink-soft);
+  border-radius: 8px;
+  color: var(--ink);
+  resize: vertical;
+}
+.stamp-modal .name-input { width: 100%; }
+.stamp-preview { border: 1.4px dashed var(--ink-soft); border-radius: 10px; background: #fffdf6; }
+
 @keyframes blink { 50% { opacity: 0; } }
 @keyframes bob { 50% { transform: translateY(-4px) rotate(-4deg); } }
 @keyframes breathe { 50% { transform: scale(1.05, 0.95) translateY(2px); } }
@@ -388,6 +454,7 @@ html, body {
   .title { font-size: 30px; }
   .title img { width: 38px; height: 38px; }
   .palette {
+    display: flex;
     top: auto;
     bottom: 168px;
     left: 0;

@@ -10,6 +10,10 @@ export interface InputTarget {
   stamp(x: number, y: number, keep: boolean): boolean;
   hasStamp(): boolean;
   isHand(): boolean;
+  /** Select tool: dragging draws a selection box instead of cells. */
+  isSelect(): boolean;
+  /** Selection box from the press cell to the current cell (inclusive); `done` on release. */
+  select(from: [number, number], to: [number, number], done: boolean): void;
   onFirstGesture(): void;
   togglePlay(): void;
   step(): void;
@@ -20,7 +24,15 @@ export interface InputTarget {
   setHover(cell: [number, number] | null): void;
 }
 
-type Mode = 'none' | 'draw' | 'pan' | 'pinch';
+type Mode = 'none' | 'draw' | 'pan' | 'pinch' | 'select';
+
+/** Typing in a text field must not trigger game shortcuts (sliders still may). */
+function isTyping(e: KeyboardEvent): boolean {
+  const t = e.target as HTMLElement | null;
+  if (!t) return false;
+  if (t.isContentEditable || t.tagName === 'TEXTAREA') return true;
+  return t.tagName === 'INPUT' && (t as HTMLInputElement).type !== 'range';
+}
 
 export function attachInput(el: HTMLElement, t: InputTarget) {
   const pointers = new Map<number, { x: number; y: number }>();
@@ -31,6 +43,7 @@ export function attachInput(el: HTMLElement, t: InputTarget) {
   let spaceUsed = false;
   let pinchDist = 0;
   let pinchCenter = { x: 0, y: 0 };
+  let selectFrom: [number, number] = [0, 0];
 
   const local = (e: PointerEvent | WheelEvent) => {
     const r = el.getBoundingClientRect();
@@ -86,6 +99,12 @@ export function attachInput(el: HTMLElement, t: InputTarget) {
       return;
     }
     const cell = t.cam.cellAt(p.x, p.y);
+    if (t.isSelect()) {
+      mode = 'select';
+      selectFrom = cell;
+      t.select(cell, cell, false);
+      return;
+    }
     if (t.hasStamp()) {
       t.stamp(cell[0], cell[1], e.shiftKey);
       mode = 'none';
@@ -113,10 +132,16 @@ export function attachInput(el: HTMLElement, t: InputTarget) {
       pinchCenter = info.c;
     } else if (mode === 'draw') {
       paintLine(t.cam.cellAt(p.x, p.y));
+    } else if (mode === 'select') {
+      t.select(selectFrom, t.cam.cellAt(p.x, p.y), false);
     }
   });
 
   const end = (e: PointerEvent) => {
+    if (mode === 'select') {
+      const p = local(e);
+      t.select(selectFrom, t.cam.cellAt(p.x, p.y), true);
+    }
     pointers.delete(e.pointerId);
     if (pointers.size === 0 || mode === 'pinch') mode = pointers.size === 0 ? 'none' : 'pan';
     if (pointers.size === 0) last = null;
@@ -140,7 +165,7 @@ export function attachInput(el: HTMLElement, t: InputTarget) {
   );
 
   window.addEventListener('keydown', (e) => {
-    if ((e.target as HTMLElement).tagName === 'INPUT' && e.code !== 'Space') return;
+    if (isTyping(e)) return;
     const pan = 60;
     switch (e.code) {
       case 'Space':
@@ -182,7 +207,7 @@ export function attachInput(el: HTMLElement, t: InputTarget) {
   });
 
   window.addEventListener('keyup', (e) => {
-    if (e.code !== 'Space') return;
+    if (e.code !== 'Space' || isTyping(e)) return;
     spaceHeld = false;
     // A tap (no drag) toggles play.
     if (!spaceUsed) t.togglePlay();

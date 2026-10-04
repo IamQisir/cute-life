@@ -2,6 +2,7 @@ import { PATTERNS, type Pattern } from '../life/patterns';
 import type { SoundMode } from '../audio/musicBox';
 import { WorldView } from '../render/world';
 import { type CardHandlers, patternCard } from './patternCard';
+import { type StampEntry, type StampSectionActions, stampSection } from './stamps';
 
 export interface HudActions {
   togglePlay(): void;
@@ -17,6 +18,7 @@ export interface HudActions {
   toggleBattle(): void;
   /** Drag-and-drop from palette cards onto the canvas. */
   cardDrag: CardHandlers;
+  toggleSelect(): void;
 }
 
 export interface ResultActions {
@@ -55,6 +57,10 @@ export class Hud {
   private toastEl = el('div', 'toast');
   private toastTimer = 0;
   private cards = new Map<Pattern, HTMLElement>();
+  private customCards = new Map<Pattern, HTMLElement>();
+  private customArea = el('div', 'custom-area');
+  private selectBtn: HTMLButtonElement;
+  private picked: Pattern | null = null;
 
   constructor(root: HTMLElement, a: HudActions) {
     this.root = root;
@@ -67,9 +73,10 @@ export class Hud {
     const topRight = el('div', 'top-right');
     this.soundBtn = button('sound on', a.toggleSound);
     this.handBtn = button('move', a.toggleHand);
+    this.selectBtn = button('select', a.toggleSelect);
     this.recordBtn = button('record', a.toggleRecord, 'rec');
     this.battleBtn = button('battle!', a.toggleBattle, 'battle-btn');
-    topRight.append(this.battleBtn, this.recordBtn, button('share', a.share), this.handBtn, this.soundBtn);
+    topRight.append(this.battleBtn, this.recordBtn, button('share', a.share), this.selectBtn, this.handBtn, this.soundBtn);
 
     const palette = el('div', 'palette');
     palette.append(el('div', 'label', 'stamps'));
@@ -82,6 +89,7 @@ export class Hud {
       this.cards.set(p, card);
       palette.append(card);
     }
+    palette.append(this.customArea);
 
     const bottom = el('div', 'bottom');
     const controls = el('div', 'controls');
@@ -130,7 +138,21 @@ export class Hud {
   }
 
   setPattern(p: Pattern | null) {
-    for (const [q, card] of this.cards) card.classList.toggle('on', q === p);
+    this.picked = p;
+    for (const [q, card] of [...this.cards, ...this.customCards]) card.classList.toggle('on', q === p);
+  }
+
+  setSelect(on: boolean) {
+    this.selectBtn.classList.toggle('on', on);
+  }
+
+  /** Rebuild the "my stamps" section of the sandbox palette. */
+  setStamps(entries: StampEntry[], a: StampSectionActions) {
+    const cell = WorldView.portrait('happy', 0);
+    const { nodes, cards } = stampSection(entries, cell, a, false);
+    this.customArea.replaceChildren(...nodes);
+    this.customCards = cards;
+    this.setPattern(this.picked);
   }
 
   /** Switch the HUD between the sandbox and battle layouts. */

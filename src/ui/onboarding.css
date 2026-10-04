@@ -1,11 +1,3 @@
-.top-right .help-btn {
-  flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  align-self: center;
-  border-radius: 48% 52% 46% 54%;
-}
 .help-btn:focus-visible, .onboarding-note .btn:focus-visible {
   outline: 2px dashed var(--blue);
   outline-offset: 3px;

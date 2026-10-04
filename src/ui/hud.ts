@@ -6,6 +6,9 @@ import { type CardHandlers, patternCard } from './patternCard';
 import { isPaletteHidden, paletteSection, setPaletteHidden } from './paletteSections';
 import { type StampEntry, type StampSectionActions, stampSection } from './stamps';
 import { MODES, type Mode, type PlayableMode } from './modes';
+import { icon, type IconName } from './icons';
+import { activeToolLabel, SETTINGS_ITEMS, soundState, TOOLBAR_ITEMS } from './toolbar';
+import { Popover } from './popover';
 
 /** Sections open until the player decides otherwise: the most fun to try first. */
 const OPEN_BY_DEFAULT = new Set<Category>(['spaceship', 'gun', 'oscillator']);
@@ -52,13 +55,41 @@ function button(text: string, onClick: () => void, cls = ''): HTMLButtonElement 
   return b;
 }
 
+/** Replace only presentation; stateful buttons keep their identity and listeners. */
+function decorate(b: HTMLButtonElement, glyph: IconName, label: string, title = label) {
+  const copy = el('span', 'toolbar-label', label);
+  b.replaceChildren(icon(glyph), copy);
+  b.title = title;
+  b.setAttribute('aria-label', title);
+}
+
+function toolbarButton(id: string, glyph: IconName, label: string, onClick?: () => void, cls = '') {
+  const b = el('button', `btn toolbar-btn ${id}-btn ${cls}`.trim());
+  b.type = 'button';
+  decorate(b, glyph, label);
+  if (onClick) b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    // Leave settings items focused so their keyup cannot reach the game.
+    if (!b.closest('[role="menu"]')) b.blur();
+    onClick();
+  });
+  return b;
+}
+
 export class Hud {
   private status = el('div', 'status');
   private playBtn: HTMLButtonElement;
   private soundBtn: HTMLButtonElement;
   private recordBtn: HTMLButtonElement;
   private modeBtn: HTMLButtonElement;
-  private modeMenu = el('div', 'mode-menu');
+  private modeMenu = el('div', 'paper-menu mode-menu');
+  private settingsBtn: HTMLButtonElement;
+  private settingsMenu = el('div', 'paper-menu settings-menu');
+  private modePopover: Popover;
+  private settingsPopover: Popover;
+  private mode: PlayableMode = 'sandbox';
+  private selecting = false;
+  private moving = false;
   private modeCards = new Map<Mode, HTMLButtonElement>();
   private root: HTMLElement;
   private modal: HTMLElement | null = null;
@@ -84,20 +115,31 @@ export class Hud {
     title.append(icon, el('span', '', 'cute'), el('span', '', 'life'));
 
     const topRight = el('div', 'top-right');
-    this.soundBtn = button('sound on', a.toggleSound);
-    this.handBtn = button('move', a.toggleHand);
-    this.selectBtn = button('select', a.toggleSelect, 'sandbox-only');
-    this.followBtn = button('follow', a.toggleFollow, 'sandbox-only');
-    this.recordBtn = button('record', a.toggleRecord, 'rec');
-    this.modeBtn = el('button', 'btn mode-btn', 'sandbox ▾');
-    this.modeBtn.type = 'button';
-    this.modeBtn.setAttribute('aria-haspopup', 'menu');
-    this.modeBtn.setAttribute('aria-expanded', 'false');
-    this.modeBtn.setAttribute('aria-controls', 'mode-menu');
+    this.soundBtn = toolbarButton('sound', 'soundAll', 'sound on', a.toggleSound);
+    this.handBtn = toolbarButton('move', 'move', 'move', () => {
+      a.toggleHand();
+      this.settingsPopover.close(true);
+    }, 'sandbox-only');
+    this.selectBtn = toolbarButton('select', 'select', 'select', () => {
+      a.toggleSelect();
+      this.settingsPopover.close(true);
+    }, 'sandbox-only');
+    this.followBtn = toolbarButton('follow', 'follow', 'follow', a.toggleFollow);
+    this.recordBtn = toolbarButton('record', 'record', 'record', a.toggleRecord, 'rec');
+    const shareBtn = toolbarButton('share', 'share', 'share', a.share);
+    this.modeBtn = toolbarButton('mode', 'sandbox', 'sandbox');
+    this.settingsBtn = toolbarButton('settings', 'settings', 'settings');
     this.modeMenu.id = 'mode-menu';
-    this.modeMenu.hidden = true;
-    this.modeMenu.setAttribute('role', 'menu');
     this.modeMenu.setAttribute('aria-label', 'choose a mode');
+    this.settingsMenu.id = 'settings-menu';
+    this.settingsMenu.setAttribute('aria-label', 'settings');
+    const settings = { sound: this.soundBtn, select: this.selectBtn, move: this.handBtn };
+    for (const id of SETTINGS_ITEMS) {
+      const item = settings[id];
+      item.setAttribute('role', id === 'sound' ? 'menuitem' : 'menuitemcheckbox');
+      if (id !== 'sound') item.setAttribute('aria-checked', 'false');
+      this.settingsMenu.append(item);
+    }
     for (const option of MODES) {
       const card = el('button', 'mode-card');
       card.type = 'button';
@@ -133,53 +175,25 @@ export class Hud {
       card.addEventListener('click', (e) => {
         e.stopPropagation();
         if (option.disabled) return;
-        this.closeModeMenu(true);
+        this.modePopover.close(true);
         a.setMode(option.id);
       });
       this.modeCards.set(option.id, card);
       this.modeMenu.append(card);
     }
-    this.modeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (this.modeMenu.hidden) this.openModeMenu();
-      else this.closeModeMenu(true);
-    });
-    // Keep both keydown and keyup (Space toggles play on release) away from game input.
-    const modeControls: HTMLElement[] = [this.modeBtn, this.modeMenu];
-    for (const control of modeControls) {
-      control.addEventListener('keyup', (e) => e.stopPropagation());
-      control.addEventListener('keydown', (e) => {
-        e.stopPropagation();
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          this.closeModeMenu(true);
-        } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-          e.preventDefault();
-          if (this.modeMenu.hidden) this.openModeMenu();
-          else {
-            const cards = [...this.modeCards.values()].filter((card) => !card.disabled);
-            const i = cards.indexOf(document.activeElement as HTMLButtonElement);
-            cards[(i + (e.key === 'ArrowDown' ? 1 : -1) + cards.length) % cards.length].focus();
-          }
-        }
-      });
-    }
-    topRight.addEventListener('focusout', (e) => {
-      if (!(e.relatedTarget instanceof Node) || (!this.modeMenu.contains(e.relatedTarget) && e.relatedTarget !== this.modeBtn)) {
-        this.closeModeMenu();
-      }
-    });
-    document.addEventListener('pointerdown', (e) => {
-      if (e.target instanceof Node && !this.modeMenu.contains(e.target) && !this.modeBtn.contains(e.target)) this.closeModeMenu();
-    });
-    window.addEventListener('resize', () => {
-      if (!this.modeMenu.hidden) this.closeModeMenu(true);
-    });
-    const helpBtn = button('?', a.openHelp, 'help-btn');
-    helpBtn.setAttribute('aria-label', 'help');
+    this.modePopover = new Popover(this.modeBtn, this.modeMenu, () => this.settingsPopover.close());
+    this.settingsPopover = new Popover(this.settingsBtn, this.settingsMenu, () => this.modePopover.close());
+    const toolbar = { mode: this.modeBtn, record: this.recordBtn, share: shareBtn, follow: this.followBtn, settings: this.settingsBtn };
+    topRight.append(...TOOLBAR_ITEMS.map((id) => toolbar[id]));
+    const helpBtn = toolbarButton('help', 'help', 'help', a.openHelp);
     helpBtn.addEventListener('keydown', (e) => e.stopPropagation());
     helpBtn.addEventListener('keyup', (e) => e.stopPropagation());
-    topRight.append(this.modeBtn, this.modeMenu, this.recordBtn, button('share', a.share, 'share-btn'), this.followBtn, this.selectBtn, this.handBtn, this.soundBtn, helpBtn);
+    topRight.insertBefore(helpBtn, this.settingsBtn);
+    const topArea = el('div', 'top-area');
+    title.setAttribute('aria-label', 'cute life');
+    const menus = el('div', 'top-menus');
+    menus.append(this.modeMenu, this.settingsMenu);
+    topArea.append(title, topRight, menus);
 
     const palette = el('div', 'palette');
     this.palette = palette;
@@ -224,8 +238,7 @@ export class Hud {
     controls.append(this.playBtn, button('step', a.step), speed, button('sprinkle', a.shuffle), button('clear', a.clear));
     bottom.append(this.status, controls);
 
-    this.hint.innerHTML =
-      'click to draw a little cell ~ space to play<br/>scroll to zoom ~ right-drag (or hold space) to move';
+    this.hint.textContent = 'click to draw a little cell ~ space to play\nscroll to zoom ~ right-drag (or hold space) to move';
 
     const sleepers = ['bl', 'br'].map((side, i) => {
       const s = el('div', `sleeper ${side}`);
@@ -236,11 +249,17 @@ export class Hud {
       return s;
     });
 
-    root.append(title, topRight, palette, this.hint, bottom, this.toastEl, ...sleepers);
+    root.append(topArea, palette, this.hint, bottom, this.toastEl, ...sleepers);
+    this.setMode('sandbox');
+    this.setHand(false);
+    this.setSelect(false);
+    this.setSound('all');
   }
 
   setStatus(generation: number, population: number) {
-    this.status.innerHTML = `generation <b>${generation}</b> · <b>${population}</b> ${population === 1 ? 'cell' : 'cells'}`;
+    this.status.replaceChildren(document.createTextNode('generation '), el('b', '', String(generation)),
+      document.createTextNode(' · '), el('b', '', String(population)),
+      document.createTextNode(` ${population === 1 ? 'cell' : 'cells'}`));
   }
 
   setPlaying(on: boolean) {
@@ -248,12 +267,17 @@ export class Hud {
   }
 
   setSound(mode: SoundMode) {
-    this.soundBtn.textContent = { all: 'sound on', music: 'music only', off: 'sound off' }[mode];
+    const state = soundState(mode);
+    decorate(this.soundBtn, state.icon, state.label, state.title);
     this.soundBtn.classList.toggle('on', mode !== 'all');
   }
 
   setHand(on: boolean) {
+    this.moving = on;
     this.handBtn.classList.toggle('on', on);
+    this.handBtn.setAttribute('aria-checked', String(on));
+    decorate(this.handBtn, 'move', 'move', `move tool ${on ? 'on' : 'off'} · H`);
+    this.updateSettingsBadge();
   }
 
   setPattern(p: Pattern | null) {
@@ -263,6 +287,8 @@ export class Hud {
 
   setFollow(on: boolean) {
     this.followBtn.classList.toggle('on', on);
+    this.followBtn.setAttribute('aria-pressed', String(on));
+    decorate(this.followBtn, 'follow', 'follow', `follow camera ${on ? 'on' : 'off'}`);
   }
 
   /** Battle deployment: grey out stamps that don't fit the cells left (null = no limit). */
@@ -278,7 +304,11 @@ export class Hud {
   }
 
   setSelect(on: boolean) {
+    this.selecting = on;
     this.selectBtn.classList.toggle('on', on);
+    this.selectBtn.setAttribute('aria-checked', String(on));
+    decorate(this.selectBtn, 'select', 'select', `select tool ${on ? 'on' : 'off'}`);
+    this.updateSettingsBadge();
   }
 
   /** Rebuild the "my stamps" section of the sandbox palette. */
@@ -293,35 +323,30 @@ export class Hud {
   /** Switch the HUD between the sandbox and battle layouts. */
   setMode(mode: PlayableMode) {
     this.root.classList.toggle('battle', mode === 'battle');
-    this.modeBtn.textContent = `${MODES.find((option) => option.id === mode)!.name} ▾`;
+    this.mode = mode;
+    const name = MODES.find((option) => option.id === mode)!.name;
+    decorate(this.modeBtn, mode, name, `mode: ${name}`);
     for (const [id, card] of this.modeCards) card.setAttribute('aria-checked', String(id === mode));
-    this.closeModeMenu();
+    this.modePopover.close();
+    this.settingsPopover.close();
+    this.updateSettingsBadge();
   }
 
-  private openModeMenu() {
-    this.modeMenu.hidden = false;
-    this.modeBtn.setAttribute('aria-expanded', 'true');
-    // Hang the menu right under the button, starting at its left edge, kept on screen.
-    const btn = this.modeBtn.getBoundingClientRect();
-    const top = btn.bottom + 6;
-    const left = Math.max(12, Math.min(btn.left, window.innerWidth - this.modeMenu.offsetWidth - 12));
-    this.modeMenu.style.top = `${top}px`;
-    this.modeMenu.style.left = `${left}px`;
-    this.modeMenu.style.maxHeight = `${Math.max(0, window.innerHeight - top - 12)}px`;
-    this.modeMenu.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus();
-  }
-
-  private closeModeMenu(restoreFocus = false) {
-    this.modeMenu.hidden = true;
-    this.modeBtn.setAttribute('aria-expanded', 'false');
-    if (restoreFocus) this.modeBtn.focus();
+  private updateSettingsBadge() {
+    const tools = activeToolLabel(this.selecting, this.moving, this.mode);
+    this.settingsBtn.classList.toggle('on', !!tools);
+    this.settingsBtn.classList.toggle('has-active-tool', !!tools);
+    const label = tools ? `settings · ${tools} tool active` : 'settings';
+    this.settingsBtn.title = label;
+    this.settingsBtn.setAttribute('aria-label', label);
   }
 
   /** Seconds elapsed while recording, or null when idle. */
   setRecording(seconds: number | null, max: number) {
     this.recordBtn.classList.toggle('live', seconds !== null);
-    this.recordBtn.textContent =
-      seconds === null ? 'record' : `stop ${Math.floor(seconds)}s / ${max}s`;
+    const label = seconds === null ? 'record' : `stop ${Math.floor(seconds)}s / ${max}s`;
+    decorate(this.recordBtn, 'record', label, seconds === null ? 'record video' : `${label} · recording video`);
+    this.recordBtn.setAttribute('aria-pressed', String(seconds !== null));
   }
 
   /** A sticky-note popup with the finished clip. */

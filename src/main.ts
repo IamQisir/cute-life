@@ -128,7 +128,7 @@ async function main() {
     },
     toggleSelect() {
       setSelecting(!selecting);
-      if (selecting) hud.toast('drag a box around some cells to save them as a stamp');
+      if (selecting) hud.toast('drag a box to save a stamp ~ settings → select turns it off');
     },
     pickPattern(p) {
       selectPattern(p);

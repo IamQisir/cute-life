@@ -46,6 +46,15 @@ export class Recorder {
     return this.rec !== null;
   }
 
+  /** Change the length limit (e.g. a whole battle needs longer than a sandbox clip). */
+  setLimit(seconds: number) {
+    this.opts.maxSeconds = seconds;
+  }
+
+  get limit() {
+    return this.opts.maxSeconds;
+  }
+
   get elapsed() {
     return this.rec ? (performance.now() - this.startedAt) / 1000 : 0;
   }

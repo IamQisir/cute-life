@@ -1,5 +1,7 @@
 import { BLUE, RED, deployZone, simulateBattle, validateDeployment } from './arena';
 import type { ArenaConfig, Pt, Team } from './arena';
+import { classify } from '../life/clusters';
+import { BATTLE_PATTERN_NAMES, PATTERNS } from '../life/patterns';
 
 export type Stars = 1 | 2 | 3 | 4 | 5;
 
@@ -23,11 +25,97 @@ function mulberry32(seed: number): Random {
   };
 }
 const integer = (random: Random, size: number): number => Math.floor(random() * size);
-const GLIDER: Pt[] = [[1, 0], [2, 1], [0, 2], [1, 2], [2, 2]];
-const BLINKER: Pt[] = [[0, 0], [1, 0], [2, 0]];
-const BLOCK: Pt[] = [[0, 0], [1, 0], [0, 1], [1, 1]];
-const R_PENTOMINO: Pt[] = [[1, 0], [2, 0], [0, 1], [1, 1], [1, 2]];
 const DIRECTIONS: Pt[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+/** One orientation of a palette structure, normalised to start at (0, 0). */
+interface Shape {
+  points: Pt[];
+  maxX: number;
+  maxY: number;
+  /** Horizontal direction of travel for spaceships (-1, 0, 1); 0 for everything else. */
+  headingX: number;
+}
+
+type Role = 'traveller' | 'grower' | 'stationary';
+const ROLE: Record<string, Role> = {
+  glider: 'traveller', lwss: 'traveller', acorn: 'grower', 'r-pentomino': 'grower',
+  block: 'stationary', blinker: 'stationary', toad: 'stationary',
+};
+/** Share of picks per role: mostly armies that move toward the enemy. */
+const ROLE_WEIGHTS: [Role, number][] = [['traveller', 0.5], ['grower', 0.25], ['stationary', 0.25]];
+const AIM_AT_ENEMY = 0.8;
+
+/** All distinct rotations/mirrors of a pattern, with each one's direction of travel. */
+function orientations(rows: string[]): Shape[] {
+  const base: Pt[] = [];
+  rows.forEach((row, y) => [...row].forEach((c, x) => c === 'O' && base.push([x, y])));
+  const seen = new Set<string>();
+  const out: Shape[] = [];
+  for (let mirror = 0; mirror < 2; mirror++) {
+    for (let rot = 0; rot < 4; rot++) {
+      let pts = base.map(([x, y]): Pt => [mirror ? -x : x, y]);
+      for (let r = 0; r < rot; r++) pts = pts.map(([x, y]): Pt => [-y, x]);
+      const minX = Math.min(...pts.map(([x]) => x));
+      const minY = Math.min(...pts.map(([, y]) => y));
+      pts = pts.map(([x, y]): Pt => [x - minX, y - minY]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+      const key = pts.join(';');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        points: pts,
+        maxX: Math.max(...pts.map(([x]) => x)),
+        maxY: Math.max(...pts.map(([, y]) => y)),
+        headingX: classify(pts).heading[0],
+      });
+    }
+  }
+  return out;
+}
+
+/** The player's palette, so the AI builds armies from the same structures. */
+const PALETTE: { role: Role; shapes: Shape[] }[] = BATTLE_PATTERN_NAMES.map((name) => {
+  const p = PATTERNS.find((q) => q.name === name)!;
+  return { role: ROLE[name] ?? 'stationary', shapes: orientations(p.rows) };
+});
+
+function pickShape(random: Random, towardRight: boolean, room: number): Shape | null {
+  let r = random();
+  let role: Role = 'stationary';
+  for (const [name, weight] of ROLE_WEIGHTS) {
+    if (r < weight) {
+      role = name;
+      break;
+    }
+    r -= weight;
+  }
+  const options = PALETTE.filter((e) => e.role === role && e.shapes[0].points.length <= room);
+  if (!options.length) return null;
+  const { shapes } = options[integer(random, options.length)];
+  if (role === 'traveller' && random() < AIM_AT_ENEMY) {
+    const aimed = shapes.filter((s) => (towardRight ? s.headingX > 0 : s.headingX < 0));
+    if (aimed.length) return aimed[integer(random, aimed.length)];
+  }
+  return shapes[integer(random, shapes.length)];
+}
+
+/** A connected, irregular clump: only used for the AI's sample opponents. */
+function clump(random: Random): Shape {
+  const points: Pt[] = [[1, 1]];
+  const keys = new Set([5]);
+  const size = 3 + integer(random, 6);
+  for (let tries = 0; tries < 50 && points.length < size; tries++) {
+    const [px, py] = points[integer(random, points.length)];
+    const [dx, dy] = DIRECTIONS[integer(random, 4)];
+    const x = px + dx;
+    const y = py + dy;
+    const key = y * 4 + x;
+    if (x >= 0 && x < 4 && y >= 0 && y < 4 && !keys.has(key)) {
+      keys.add(key);
+      points.push([x, y]);
+    }
+  }
+  return { points, maxX: Math.max(...points.map(([x]) => x)), maxY: Math.max(...points.map(([, y]) => y)), headingX: 0 };
+}
 
 function candidate(cfg: ArenaConfig, team: Team, random: Random, clumpsOnly = false): Pt[] {
   const zone = deployZone(cfg, team);
@@ -37,7 +125,6 @@ function candidate(cfg: ArenaConfig, team: Team, random: Random, clumpsOnly = fa
   const center: Pt = [zone.x0 + integer(random, width), integer(random, cfg.height)];
   const compact = clumpsOnly || random() < 0.55;
   const radius = 3 + integer(random, 5);
-  const growthBias = random() < 0.3;
 
   function add(x: number, y: number): boolean {
     if (x < zone.x0 || x > zone.x1 || y < 0 || y >= cfg.height) return false;
@@ -49,42 +136,14 @@ function candidate(cfg: ArenaConfig, team: Team, random: Random, clumpsOnly = fa
   }
 
   for (let attempt = 0; attempt < 100 && points.length < cfg.budget; attempt++) {
-    let pattern: Pt[];
-    const choice = random();
-    if (clumpsOnly || choice < 0.15) {
-      // A connected, irregular clump rather than independent uniform noise.
-      pattern = [[1, 1]];
-      const keys = new Set([5]);
-      const size = 3 + integer(random, 6);
-      for (let tries = 0; tries < 50 && pattern.length < size; tries++) {
-        const [px, py] = pattern[integer(random, pattern.length)];
-        const [dx, dy] = DIRECTIONS[integer(random, 4)];
-        const x = px + dx;
-        const y = py + dy;
-        const key = y * 4 + x;
-        if (x >= 0 && x < 4 && y >= 0 && y < 4 && !keys.has(key)) {
-          keys.add(key);
-          pattern.push([x, y]);
-        }
-      }
-    } else if (choice < (growthBias ? 0.75 : 0.42)) {
-      pattern = R_PENTOMINO;
-    } else if (choice < 0.72) {
-      pattern = GLIDER;
-    } else if (choice < 0.87) {
-      pattern = BLOCK;
-    } else {
-      pattern = BLINKER;
-    }
-    if (pattern.length > cfg.budget - points.length) continue;
-    let maxX = 0;
-    let maxY = 0;
-    for (const [x, y] of pattern) {
-      maxX = Math.max(maxX, x);
-      maxY = Math.max(maxY, y);
-    }
-    const transpose = pattern === BLINKER && random() < 0.5;
-    if (transpose) [maxX, maxY] = [maxY, maxX];
+    const room = cfg.budget - points.length;
+    const x0 = compact ? center[0] : zone.x0 + integer(random, width);
+    // With a horizontal seam, the outer edge can be the shortest enemy route.
+    // At walls, aim across the centre toward the enemy deployment zone.
+    const towardRight = cfg.wrapX ? x0 > (zone.x0 + zone.x1) / 2 : team === RED;
+    const shape = clumpsOnly ? clump(random) : pickShape(random, towardRight, room);
+    if (!shape || shape.points.length > room) continue;
+    const { maxX, maxY } = shape;
     if (maxX >= width || maxY >= cfg.height) continue;
     const x = compact
       ? Math.max(zone.x0, Math.min(zone.x1 - maxX, center[0] + integer(random, radius * 2 + 1) - radius))
@@ -92,15 +151,7 @@ function candidate(cfg: ArenaConfig, team: Team, random: Random, clumpsOnly = fa
     const y = compact
       ? Math.max(0, Math.min(cfg.height - maxY - 1, center[1] + integer(random, radius * 2 + 1) - radius))
       : integer(random, cfg.height - maxY);
-    // With a horizontal seam, the outer edge can be the shortest enemy route.
-    // At walls, aim across the centre toward the enemy deployment zone.
-    const towardRight = cfg.wrapX ? x > (zone.x0 + zone.x1) / 2 : team === RED;
-    const flipX = pattern === GLIDER ? (random() < 0.8 ? !towardRight : towardRight) : random() < 0.5;
-    const flipY = random() < 0.5;
-    const placed = pattern.map(([px, py]): Pt => {
-      if (transpose) [px, py] = [py, px];
-      return [x + (flipX ? maxX - px : px), y + (flipY ? maxY - py : py)];
-    });
+    const placed = shape.points.map(([px, py]): Pt => [x + px, y + py]);
     if (placed.some(([px, py]) => occupied.has(py * cfg.width + px))) continue;
     for (const [px, py] of placed) add(px, py);
   }

@@ -10,6 +10,7 @@ import {
   fromChallengeHash, fromReplayHash, toChallengeHash, toReplayHash,
 } from '../src/battle/challenge';
 import { encodeRle } from '../src/share/rle';
+import { PATTERNS } from '../src/life/patterns';
 
 const cfg = DEFAULT_ARENA;
 const sorted = (points: Pt[]): Pt[] => points.slice().sort((a, b) => a[1] - b[1] || a[0] - b[0]);
@@ -333,9 +334,16 @@ describe('seeded AI', () => {
     console.info('Battle AI median elapsed ms:', times);
     expect(times[3]).toBeLessThan(1000);
     expect(times[5]).toBeLessThan(1500);
-    const red = chooseDeployment(cfg, RED, 1, 11);
-    const blue = chooseDeployment(cfg, BLUE, 1, 19);
-    expect(simulateBattle(cfg, red, blue).generations).toBe(150);
+    // Time a full-length battle: find the first seed pair that doesn't settle early,
+    // so this doesn't depend on exactly which armies the AI generates.
+    let red: Pt[] = [];
+    let blue: Pt[] = [];
+    for (let seed = 0; seed < 200; seed++) {
+      red = chooseDeployment(cfg, RED, 1, 11 + seed);
+      blue = chooseDeployment(cfg, BLUE, 1, 19 + seed);
+      if (simulateBattle(cfg, red, blue).generations === cfg.generations) break;
+    }
+    expect(simulateBattle(cfg, red, blue).generations).toBe(cfg.generations);
     const start = performance.now();
     for (let i = 0; i < 100; i++) simulateBattle(cfg, red, blue);
     const battleMs = (performance.now() - start) / 100;
@@ -485,6 +493,33 @@ describe('arena sizes in links', () => {
         expect(army.length).toBe(cfg.budget);
         expect(validateDeployment(cfg, team, army).ok).toBe(true);
       }
+    }
+  });
+});
+
+describe('AI uses the whole palette', () => {
+  /** True if `army` contains a translated copy of any rotation/mirror of the pattern. */
+  function contains(army: Pt[], rows: string[]): boolean {
+    const have = new Set(army.map(([x, y]) => `${x},${y}`));
+    const base: Pt[] = [];
+    rows.forEach((row, y) => [...row].forEach((c, x) => c === 'O' && base.push([x, y])));
+    for (let mirror = 0; mirror < 2; mirror++) for (let rot = 0; rot < 4; rot++) {
+      let pts = base.map(([x, y]): Pt => [mirror ? -x : x, y]);
+      for (let r = 0; r < rot; r++) pts = pts.map(([x, y]): Pt => [-y, x]);
+      const [ax, ay] = pts[0];
+      for (const [x, y] of army) {
+        if (pts.every(([px, py]) => have.has(`${x + px - ax},${y + py - ay}`))) return true;
+      }
+    }
+    return false;
+  }
+
+  it('builds armies with lwss, acorn and toad, not just gliders and blocks', () => {
+    const cfg = ARENA_PRESETS.large;
+    const armies = Array.from({ length: 12 }, (_, i) => chooseDeployment(cfg, RED, 3, 500 + i));
+    for (const name of ['lwss', 'acorn', 'toad']) {
+      const p = PATTERNS.find((q) => q.name === name)!;
+      expect(armies.some((a) => contains(a, p.rows)), name).toBe(true);
     }
   });
 });

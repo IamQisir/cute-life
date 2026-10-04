@@ -119,14 +119,17 @@ export class BattleHud {
       thinking: 'the AI is thinking...',
       reveal: 'ready... fight!',
       battle: b.paused ? 'paused' : 'fight!',
-      result: '',
+      // Non-breaking space: an empty title would collapse the header and reframe the arena.
+      result: '\u00a0',
     };
     this.title.textContent = titles[b.phase];
     this.sub.textContent =
       b.phase === 'deploy' ? `${b.budgetLeft} of ${b.cfg.budget} cells left · ${b.cfg.width}×${b.cfg.height} · ${vs}` : vs;
 
+    // Hidden panels keep their space (visibility, not display), so the arena
+    // is framed the same in every phase and doesn't jump when the battle starts.
     const showBoard = b.phase === 'reveal' || b.phase === 'battle' || b.phase === 'result';
-    this.board.style.display = showBoard ? '' : 'none';
+    this.board.style.visibility = showBoard ? 'visible' : 'hidden';
     this.redNum.textContent = `red ${red}`;
     this.blueNum.textContent = `${blue} blue`;
     this.redBar.style.width = `${red + blue ? (100 * red) / (red + blue) : 50}%`;
@@ -143,8 +146,7 @@ export class BattleHud {
 
   private renderPalette(b: BattleMode) {
     const deploying = b.phase === 'deploy';
-    this.palette.style.display = deploying ? '' : 'none';
-    if (!deploying) return;
+    this.palette.style.visibility = deploying ? 'visible' : 'hidden';
     if (this.paletteTeam !== b.myTeam) {
       // Cards are drawn with the player's team colour.
       this.paletteTeam = b.myTeam;
@@ -157,7 +159,7 @@ export class BattleHud {
         this.palette.append(card);
       }
     }
-    for (const [p, card] of this.cards) card.classList.toggle('off', cellCount(p) > b.budgetLeft);
+    if (deploying) for (const [p, card] of this.cards) card.classList.toggle('off', cellCount(p) > b.budgetLeft);
   }
 
   private buildControls(b: BattleMode) {

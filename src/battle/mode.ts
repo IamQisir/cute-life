@@ -14,6 +14,7 @@ import {
   type Winner,
   deployZone,
   placeArmies,
+  simulateBattle,
 } from './arena';
 import { BattleSim } from './battleSim';
 import { toChallengeHash, toReplayHash } from './challenge';
@@ -48,6 +49,11 @@ export interface BattleHooks {
 }
 
 const REVEAL_MS = 1400;
+/** When recording, the last generations play slower so the ending lands. */
+const FINALE_GENERATIONS = 24;
+const FINALE_GEN_PER_SEC = 4;
+/** If frames are slow (weak device, recording), catch up at most this many generations per frame. */
+const MAX_STEPS_PER_FRAME = 4;
 
 export class BattleMode {
   size: ArenaSize = 'small';
@@ -60,6 +66,10 @@ export class BattleMode {
   army: Pt[] = [];
   enemy: Pt[] = [];
   genPerSec = 8;
+  /** Recording: slow down for the last FINALE_GENERATIONS generations. */
+  slowFinale = false;
+  /** Generation the current battle will end on (it's deterministic, so we know in advance). */
+  private endGeneration = Infinity;
   paused = false;
   outcome: BattleOutcome | null = null;
   private phaseAt = 0;
@@ -247,13 +257,19 @@ export class BattleMode {
       this.lastStep = now;
     }
     if (this.phase !== 'battle' || this.paused) return;
-    if (now - this.lastStep < 1000 / this.genPerSec) return;
-    this.lastStep = now;
-    this.sim.animMs = Math.min(360, (1000 / this.genPerSec) * 0.9);
-    const born = this.sim.advance(now);
-    this.hooks.births(born.map(([x, y]) => [x, y]));
-    if (this.isOver()) this.finish(now);
-    else this.hooks.changed();
+    // Keep game time in step with real time even when frames are slow.
+    let steps = 0;
+    while (this.phase === 'battle' && steps < MAX_STEPS_PER_FRAME && now - this.lastStep >= 1000 / this.speed()) {
+      this.lastStep += 1000 / this.speed();
+      steps++;
+      this.sim.animMs = Math.min(360, (1000 / this.speed()) * 0.9);
+      const born = this.sim.advance(now);
+      if (steps === 1) this.hooks.births(born.map(([x, y]) => [x, y]));
+      if (this.isOver()) this.finish(now);
+    }
+    // Too far behind (e.g. the tab was hidden): drop the backlog instead of racing.
+    if (now - this.lastStep > 1000) this.lastStep = now;
+    if (steps > 0 && this.phase === 'battle') this.hooks.changed();
   }
 
   challengeLink(name?: string): string | null {
@@ -267,8 +283,14 @@ export class BattleMode {
     return location.origin + location.pathname + toReplayHash({ red, blue, size: this.size });
   }
 
+  private speed() {
+    const inFinale = this.slowFinale && this.sim.generation >= this.endGeneration - FINALE_GENERATIONS;
+    return inFinale ? Math.min(this.genPerSec, FINALE_GEN_PER_SEC) : this.genPerSec;
+  }
+
   private reveal(now: number) {
     const [red, blue] = this.myTeam === RED ? [this.army, this.enemy] : [this.enemy, this.army];
+    this.endGeneration = simulateBattle(this.cfg, red, blue).generations;
     this.sim.load(placeArmies(this.cfg, red, blue), now);
     this.setPhase('reveal', now);
   }

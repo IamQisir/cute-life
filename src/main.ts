@@ -22,6 +22,10 @@ import { Hud } from './ui/hud';
 
 const POPULATION_CAP = 25000;
 const MAX_RECORD_SECONDS = 15;
+/** A recorded battle replay: long enough for a large arena at 8 gen/s plus the slow finale. */
+const MAX_BATTLE_RECORD_SECONDS = 60;
+const RECORD_GEN_PER_SEC = 8;
+const RESULT_HOLD_MS = 2000;
 /** Links longer than this still work, but some apps truncate them. */
 const LONG_LINK = 8000;
 const POST_TEXT = 'my little cells are growing 🌱 #cutelife #GameOfLife';
@@ -285,7 +289,8 @@ async function main() {
     shownSecond = -1;
     if (recordingReplay) {
       recordingReplay = false;
-      battle.genPerSec = 8;
+      battle.slowFinale = false;
+      recorder.setLimit(MAX_RECORD_SECONDS);
     }
     if (clipUrl) URL.revokeObjectURL(clipUrl);
     clipUrl = URL.createObjectURL(r.blob);
@@ -351,7 +356,7 @@ async function main() {
       audio.fanfare(outcome.youWon !== false);
       if (recordingReplay) {
         // Linger on the final board for a moment, then stop the clip.
-        setTimeout(() => recorder.recording && recorder.stop(), 1500);
+        setTimeout(() => recorder.recording && recorder.stop(), RESULT_HOLD_MS);
       }
     },
   });
@@ -449,10 +454,12 @@ async function main() {
       hud.toast("sorry, this browser can't record video");
       return;
     }
-    // Fast enough that the whole battle fits in one clip.
+    // The whole battle in one clip, slowing down for the last generations.
     recordingReplay = true;
-    battle.genPerSec = 14;
-    hud.setRecording(0, MAX_RECORD_SECONDS);
+    recorder.setLimit(MAX_BATTLE_RECORD_SECONDS);
+    battle.genPerSec = RECORD_GEN_PER_SEC;
+    battle.slowFinale = true;
+    hud.setRecording(0, recorder.limit);
     battle.replay(performance.now());
   }
 
@@ -592,7 +599,7 @@ async function main() {
     const sec = Math.floor(recorder.elapsed);
     if (sec !== shownSecond && recorder.recording) {
       shownSecond = sec;
-      hud.setRecording(sec, MAX_RECORD_SECONDS);
+      hud.setRecording(sec, recorder.limit);
     }
   }, undefined, UPDATE_PRIORITY.UTILITY);
 

@@ -8,6 +8,7 @@ import type { BattleMode } from '../battle/mode';
 import { BATTLE_PATTERN_NAMES, PATTERNS, type Pattern, cellCount } from '../life/patterns';
 import { WorldView } from '../render/world';
 import { type CardHandlers, patternCard } from './patternCard';
+import { type StampEntry, stampSection } from './stamps';
 
 export interface BattleActions {
   ready(): void;
@@ -64,6 +65,7 @@ export class BattleHud {
   private nameInput = el('input', 'name-input');
   private cards = new Map<Pattern, HTMLElement>();
   private paletteTeam = 0;
+  private stamps: StampEntry[] = [];
   private lastKey = '';
 
   constructor(parent: HTMLElement, private a: BattleActions) {
@@ -80,6 +82,12 @@ export class BattleHud {
 
   show(on: boolean) {
     this.root.style.display = on ? '' : 'none';
+  }
+
+  /** Custom stamps shown after the built-in structures (usable, not editable, here). */
+  setStamps(entries: StampEntry[]) {
+    this.stamps = entries;
+    this.paletteTeam = 0; // force a rebuild on the next render
   }
 
   /** Highlight the card whose pattern is currently the stamp. */
@@ -162,6 +170,9 @@ export class BattleHud {
         this.cards.set(p, card);
         this.palette.append(card);
       }
+      const custom = stampSection(this.stamps, cell, { cards: this.a.cards }, true);
+      this.palette.append(...custom.nodes);
+      for (const [p, card] of custom.cards) this.cards.set(p, card);
     }
     if (deploying) for (const [p, card] of this.cards) card.classList.toggle('off', cellCount(p) > b.budgetLeft);
   }

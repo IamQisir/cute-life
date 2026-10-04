@@ -35,6 +35,10 @@ ends as soon as one side wilts. Zoom in to see the individual cells. Play the
 AI (1-5 stars), send a **challenge link** to a friend, or share a **replay
 link** of any battle.
 
+Stamps: press **select** and drag a box over some cells to save them as your
+own stamp, or **+ import** RLE (e.g. from LifeWiki). Your stamps appear in the
+sandbox and battle palettes (saved in this browser) and can be shared as a link.
+
 Share: **share** copies a link that reopens your exact scene; **record**
 saves a short MP4 (with sound and a watermark) ready to post.
 
@@ -50,6 +54,7 @@ URL params for demos: `?play`, `?sprinkle`, `?zoom=8`.
 
 ## Layout
 
+- `src/life/library.ts` custom stamps (RLE import/export, storage, stamp links)
 - `src/life/` pure simulation (sparse set of live cells), patterns, and
   `clusters.ts` (grouping + pattern recognition in all phases/symmetries), unit-tested
 - `src/sim.ts` simulation state + animation bookkeeping (births, fades)

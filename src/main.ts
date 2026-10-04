@@ -2,12 +2,22 @@
 import '@fontsource/caveat/500.css';
 import '@fontsource/caveat/700.css';
 import '@fontsource/patrick-hand/400.css';
-import { Application, UPDATE_PRIORITY } from 'pixi.js';
+import { Application, Graphics, UPDATE_PRIORITY } from 'pixi.js';
 import { MusicBox } from './audio/musicBox';
 import { fromChallengeHash, fromReplayHash } from './battle/challenge';
 import { BattleMode, type Opponent } from './battle/mode';
 import { attachInput } from './input';
-import { keyX, keyY, toList } from './life/engine';
+import { key, keyX, keyY, toList } from './life/engine';
+import {
+  Library,
+  type StampStorage,
+  cleanName,
+  fromStampHash,
+  patternFromRle,
+  patternToRle,
+  rowsFromPoints,
+  toStampHash,
+} from './life/library';
 import { PATTERNS, type Pattern, placePattern } from './life/patterns';
 import { ArenaView } from './render/arenaView';
 import { Camera } from './render/camera';
@@ -18,6 +28,7 @@ import { Recorder, type Recording } from './share/recorder';
 import { Sim } from './sim';
 import { BattleHud } from './ui/battleHud';
 import type { CardHandlers } from './ui/patternCard';
+import { SelectionMenu, type StampEntry, openImportDialog, openStampOffer } from './ui/stamps';
 import { Hud } from './ui/hud';
 
 const POPULATION_CAP = 25000;
@@ -60,6 +71,9 @@ async function main() {
   let mode: 'sandbox' | 'battle' = 'sandbox';
   let sandboxCam = { x: 0, y: 0, zoom: 40 };
   let recordingReplay = false;
+  let selecting = false;
+  /** Selection box in cells (inclusive), while the select tool is in use. */
+  let selection: { x0: number; y0: number; x1: number; y1: number } | null = null;
 
   const syncAnim = () => {
     sim.animMs = Math.min(420, (1000 / genPerSec) * 0.9);
@@ -97,6 +111,10 @@ async function main() {
       pick: () => {},
       drag: (p, x, y) => cardDrag.drag(p, x, y),
       drop: (p, x, y) => cardDrag.drop(p, x, y),
+    },
+    toggleSelect() {
+      setSelecting(!selecting);
+      if (selecting) hud.toast('drag a box around some cells to save them as a stamp');
     },
     pickPattern(p) {
       selectPattern(p);
@@ -429,6 +447,7 @@ async function main() {
       setPlaying(false);
     }
     selectPattern(null);
+    setSelecting(false);
     mode = 'battle';
     hud.setMode('battle');
     battleHud.show(true);
@@ -463,6 +482,162 @@ async function main() {
     battle.replay(performance.now());
   }
 
+  // ---- custom stamps -------------------------------------------------------
+
+  // localStorage can be missing or throw (private mode, blocked site data):
+  // the library then just works in memory.
+  const storage: StampStorage = {
+    get(k) {
+      try {
+        return localStorage.getItem(k);
+      } catch {
+        return null;
+      }
+    },
+    set(k, v) {
+      try {
+        localStorage.setItem(k, v);
+      } catch {
+        /* keep working in memory */
+      }
+    },
+  };
+  const library = new Library(storage);
+  /** Stable Pattern objects per stamp id, so "is this the selected stamp" works by identity. */
+  const stampPatterns = new Map<string, Pattern>();
+  const stampCell = WorldView.portrait('happy', 0);
+
+  function stampEntries(): StampEntry[] {
+    return library.list().map((c) => {
+      let p = stampPatterns.get(c.id);
+      if (!p || p.name !== c.name) {
+        p = { name: c.name, rows: c.rows };
+        stampPatterns.set(c.id, p);
+      }
+      return { id: c.id, pattern: p };
+    });
+  }
+
+  function refreshStamps() {
+    const entries = stampEntries();
+    hud.setStamps(entries, {
+      cards: cardDrag,
+      share(id) {
+        const s = library.list().find((c) => c.id === id);
+        if (s) copyText(location.origin + location.pathname + toStampHash(s.name, s.rows), `link to "${s.name}" copied ~`);
+      },
+      remove(id) {
+        const s = library.list().find((c) => c.id === id);
+        if (!s || !window.confirm(`delete the stamp "${s.name}"?`)) return;
+        if (pattern === stampPatterns.get(id)) selectPattern(null);
+        library.remove(id);
+        stampPatterns.delete(id);
+        refreshStamps();
+      },
+      importStamp: () => openImportDialog(importStamp),
+    });
+    battleHud.setStamps(entries);
+    if (mode === 'battle') battleHud.render(battle);
+  }
+
+  /** Add a stamp and report what happened. Returns an error message, or null. */
+  function addStamp(name: string, rows: string[]): string | null {
+    const res = library.add(name, rows);
+    if ('error' in res) {
+      return res.error === 'full'
+        ? 'your stamp book is full (48): delete one first'
+        : res.error === 'too-big'
+          ? 'too big for a stamp (max 400 cells, 64×64)'
+          : 'there are no cells in it';
+    }
+    refreshStamps();
+    hud.toast(res.duplicate ? `you already have that one: "${res.pattern.name}"` : `added "${res.pattern.name}" to my stamps`);
+    return null;
+  }
+
+  function importStamp(text: string, name: string): string | null {
+    const t = text.trim();
+    const parsed = t.includes('stamp=') ? fromStampHash(t.slice(t.indexOf('#'))) : patternFromRle(t, name);
+    if (!parsed) return "couldn't read that: paste RLE or a stamp link";
+    return addStamp(name.trim() || parsed.name, parsed.rows);
+  }
+
+  // ---- canvas selection (sandbox) ------------------------------------------
+
+  const selectionGfx = new Graphics();
+  app.stage.addChild(selectionGfx);
+  const selectionMenu = new SelectionMenu(document.getElementById('hud')!, {
+    save(name) {
+      const rows = rowsFromPoints(selectedPoints());
+      if (!rows) {
+        hud.toast(selectedPoints().length ? 'too big for a stamp (max 400 cells, 64×64)' : 'there are no cells in the box');
+        return;
+      }
+      if (addStamp(name, rows) === null) setSelecting(false);
+    },
+    copyRle(name) {
+      const rows = rowsFromPoints(selectedPoints());
+      if (rows) copyText(patternToRle(rows, cleanName(name) || undefined), 'RLE copied ~');
+      else hud.toast('there are no cells in the box');
+    },
+    close: () => clearSelection(),
+  });
+
+  function selectedPoints(): [number, number][] {
+    if (!selection) return [];
+    const pts: [number, number][] = [];
+    for (let y = selection.y0; y <= selection.y1; y++) {
+      for (let x = selection.x0; x <= selection.x1; x++) if (sim.cells.has(key(x, y))) pts.push([x, y]);
+    }
+    return pts;
+  }
+
+  /** Just below-right of the selection box, in screen pixels. */
+  function menuSpot(): [number, number] {
+    if (!selection) return [0, 0];
+    const [sx, sy] = cam.toScreen(selection.x1 + 1, selection.y1 + 1);
+    return [sx + 8, sy + 8];
+  }
+
+  function clearSelection() {
+    selection = null;
+    selectionMenu.hide();
+  }
+
+  function setSelecting(on: boolean) {
+    selecting = on;
+    hud.setSelect(on);
+    if (on) {
+      selectPattern(null);
+      if (hand) toggleHand();
+    } else {
+      clearSelection();
+    }
+  }
+
+  function drawSelection() {
+    const g = selectionGfx;
+    g.clear();
+    if (!selection || mode !== 'sandbox') return;
+    const [x0, y0] = cam.toScreen(selection.x0, selection.y0);
+    const [x1, y1] = cam.toScreen(selection.x1 + 1, selection.y1 + 1);
+    g.rect(x0, y0, x1 - x0, y1 - y0).fill({ color: 0xe0a640, alpha: 0.12 });
+    const corners: [number, number][] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+    for (let e = 0; e < 4; e++) {
+      const [ax, ay] = corners[e];
+      const [bx, by] = corners[(e + 1) % 4];
+      const n = Math.max(2, Math.round(Math.hypot(bx - ax, by - ay) / 8));
+      for (let i = 0; i < n; i += 2) {
+        g.moveTo(ax + ((bx - ax) * i) / n, ay + ((by - ay) * i) / n).lineTo(
+          ax + ((bx - ax) * Math.min(n, i + 1)) / n,
+          ay + ((by - ay) * Math.min(n, i + 1)) / n,
+        );
+      }
+    }
+    g.stroke({ width: 2, color: 0xb07a1e, alpha: 0.9 });
+    selectionMenu.move(...menuSpot());
+  }
+
   attachInput(app.canvas, {
     cam,
     paint(x, y, value) {
@@ -494,6 +669,17 @@ async function main() {
       return true;
     },
     hasStamp: () => pattern !== null && (mode === 'sandbox' || battle.phase === 'deploy'),
+    isSelect: () => mode === 'sandbox' && selecting,
+    select(from, to, done) {
+      selection = {
+        x0: Math.min(from[0], to[0]),
+        y0: Math.min(from[1], to[1]),
+        x1: Math.max(from[0], to[0]),
+        y1: Math.max(from[1], to[1]),
+      };
+      if (done) selectionMenu.show(...menuSpot(), selectedPoints().length);
+      else selectionMenu.hide();
+    },
     isHand: () => hand,
     onFirstGesture() {
       audio.unlock();
@@ -519,6 +705,7 @@ async function main() {
     toggleHand,
     cancelStamp() {
       selectPattern(null);
+      clearSelection();
     },
     rotateStamp() {
       rotation = (rotation + 1) % 4;
@@ -575,6 +762,7 @@ async function main() {
     }
     if (mode === 'battle') {
       battle.update(t);
+      selectionGfx.clear();
       territoryView.update(cam, battle.sim);
       arenaView.update(cam, battle.layout(), battle.arenaState());
       let ghost = null;
@@ -587,6 +775,7 @@ async function main() {
     }
     territoryView.update(cam, null);
     arenaView.update(cam, null, { showZones: [] });
+    drawSelection();
     sim.prune(t);
     const stamp = pattern && hover ? { points: stampPoints(hover[0], hover[1]) } : null;
     view.update(t, sim, cam, stamp, true);
@@ -602,6 +791,15 @@ async function main() {
       hud.setRecording(sec, recorder.limit);
     }
   }, undefined, UPDATE_PRIORITY.UTILITY);
+
+  refreshStamps();
+  // A stamp link offers to add the stamp to "my stamps".
+  const offered = fromStampHash(location.hash);
+  if (offered) {
+    const p: Pattern = { name: offered.name || 'shared stamp', rows: offered.rows };
+    openStampOffer(p, stampCell, () => addStamp(p.name, p.rows), () => {});
+    forgetSharedLink();
+  }
 
   // Challenge and replay links open straight into a battle.
   const challenge = fromChallengeHash(location.hash);

@@ -34,6 +34,10 @@
     battle ends at the first extinction. While watching, same-team cells form
     team-coloured creatures; zooming in crossfades to cells (thresholds are
     relative to the framed zoom, 1.25x-1.6x). Links carry a rules version.
+- [x] **Custom stamps**: select a box on the sandbox canvas to save a stamp,
+  or import RLE / a stamp link; stamps live in localStorage (in-memory if
+  unavailable), appear in both palettes (battle shows cost), and share as
+  `#stamp=1&n=...&b=...` links. Limits: 400 cells, 64x64, 48 stamps
 - [ ] **M5 Art swap**: AI-generated body sprites (faceless) replace procedural bodies;
   faces stay procedural so expressions compose freely
 - [ ] **M6 Identity tracking**: match components across generations so creatures

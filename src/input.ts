@@ -22,6 +22,8 @@ export interface InputTarget {
   cancelStamp(): void;
   rotateStamp(): void;
   setHover(cell: [number, number] | null): void;
+  /** The player moved or zoomed the camera themselves. */
+  manualCamera(): void;
 }
 
 type Mode = 'none' | 'draw' | 'pan' | 'pinch' | 'select';
@@ -123,8 +125,10 @@ export function attachInput(el: HTMLElement, t: InputTarget) {
     pointers.set(e.pointerId, p);
 
     if (mode === 'pan') {
+      t.manualCamera();
       t.cam.panBy(p.x - prev.x, p.y - prev.y);
     } else if (mode === 'pinch' && pointers.size === 2) {
+      t.manualCamera();
       const info = pinchInfo();
       t.cam.panBy(info.c.x - pinchCenter.x, info.c.y - pinchCenter.y);
       if (pinchDist > 0) t.cam.zoomAt(info.c.x, info.c.y, info.d / pinchDist);
@@ -156,6 +160,7 @@ export function attachInput(el: HTMLElement, t: InputTarget) {
     'wheel',
     (e) => {
       e.preventDefault();
+      t.manualCamera();
       const p = local(e);
       const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
       // Trackpad pinch arrives as ctrl+wheel with small deltas.
@@ -167,6 +172,7 @@ export function attachInput(el: HTMLElement, t: InputTarget) {
   window.addEventListener('keydown', (e) => {
     if (isTyping(e)) return;
     const pan = 60;
+    if (/^(Arrow|Equal|Minus|NumpadAdd|NumpadSubtract)/.test(e.code)) t.manualCamera();
     switch (e.code) {
       case 'Space':
         e.preventDefault();

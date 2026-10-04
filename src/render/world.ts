@@ -129,22 +129,25 @@ export class WorldView {
     this.gridSig = sig;
     const g = this.grid;
     g.clear();
-    if (cam.zoom < GRID_ZOOM) return;
-    const alpha = Math.min(1, (cam.zoom - GRID_ZOOM) / 12);
+    // Like a map scale: every cell up close, then every 5, 25, 125... cells,
+    // keeping lines at least ~12 px apart so there's always a sense of scale.
+    let step = 1;
+    while (step * cam.zoom < 12) step *= 5;
+    const alpha = step === 1 ? Math.min(1, Math.max(0.5, (cam.zoom - GRID_ZOOM) / 12)) : 0.8;
     const [wx0, wy0] = cam.toWorld(0, 0);
     const [wx1, wy1] = cam.toWorld(cam.w, cam.h);
     const seg = 90;
     // Hand-drawn wobble that sticks to each line as you pan.
     const wob = (i: number, j: number) => (((cellHash(i, j) & 1023) / 1023) - 0.5) * 1.6;
     const drawLines = (major: boolean) => {
-      for (let i = Math.floor(wx0); i <= Math.ceil(wx1); i++) {
-        if ((i % 5 === 0) !== major) continue;
+      for (let i = Math.floor(wx0 / step) * step; i <= Math.ceil(wx1); i += step) {
+        if ((i % (step * 5) === 0) !== major) continue;
         const [sx] = cam.toScreen(i, 0);
         g.moveTo(sx + wob(i, 0), 0);
         for (let y = seg, j = 1; y < cam.h + seg; y += seg, j++) g.lineTo(sx + wob(i, j), y);
       }
-      for (let i = Math.floor(wy0); i <= Math.ceil(wy1); i++) {
-        if ((i % 5 === 0) !== major) continue;
+      for (let i = Math.floor(wy0 / step) * step; i <= Math.ceil(wy1); i += step) {
+        if ((i % (step * 5) === 0) !== major) continue;
         const [, sy] = cam.toScreen(0, i);
         g.moveTo(0, sy + wob(0, i));
         for (let x = seg, j = 1; x < cam.w + seg; x += seg, j++) g.lineTo(x, sy + wob(j, i));
@@ -181,7 +184,8 @@ export class WorldView {
     const [wx0, wy0] = cam.toWorld(-z, -z);
     const [wx1, wy1] = cam.toWorld(cam.w + z, cam.h + z);
     const inView = (x: number, y: number) => x >= wx0 && x <= wx1 && y >= wy0 && y <= wy1;
-    const scale = (faces ? 1.3 : 1) * z / TEX_SIZE;
+    // Dots never shrink below ~4 px, or far-away cells vanish into the paper.
+    const scale = faces ? (1.3 * z) / TEX_SIZE : Math.max(z, 4.5) / TEX_SIZE;
     const sec = now / 1000;
     const anim = sim.animMs;
     const teamOf = sim.teamOf?.bind(sim);

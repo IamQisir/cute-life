@@ -4,7 +4,6 @@
 // Pure DOM; BattleMode owns the state, main.ts wires actions.
 
 import type { Stars } from '../battle/ai';
-import { ARENA_SIZES, type ArenaSize } from '../battle/arena';
 import type { BattleMode } from '../battle/mode';
 import { BATTLE_PATTERN_NAMES, PATTERNS, type Pattern, cellCount } from '../life/patterns';
 import { WorldView } from '../render/world';
@@ -15,7 +14,6 @@ export interface BattleActions {
   random(): void;
   clear(): void;
   setStars(stars: Stars): void;
-  setSize(size: ArenaSize): void;
   challenge(name: string): void;
   editArmy(): void;
   replay(): void;
@@ -110,8 +108,10 @@ export class BattleHud {
   render(b: BattleMode) {
     const o = b.opponent;
     const vs = o.kind === 'ai' ? `vs AI ${'★'.repeat(o.stars)}` : o.kind === 'challenge' ? `vs ${o.name || 'a friend'}` : 'replay';
-    // Territory decides the winner; living cells are shown as context.
-    const { red, blue } = b.sim.territory;
+    // Garden flowers decide the winner (whole-board territory for legacy links).
+    const garden = b.cfg.garden !== undefined;
+    const unit = garden ? 'flowers' : 'territory';
+    const { red, blue } = b.sim.points;
     const cells = b.sim.score;
 
     const titles: Record<typeof b.phase, string> = {
@@ -124,7 +124,11 @@ export class BattleHud {
     };
     this.title.textContent = titles[b.phase];
     this.sub.textContent =
-      b.phase === 'deploy' ? `${b.budgetLeft} of ${b.cfg.budget} cells left · ${b.cfg.width}×${b.cfg.height} · ${vs}` : vs;
+      b.phase === 'deploy'
+        ? garden
+          ? `${b.budgetLeft} of ${b.cfg.budget} cells left · grow into the garden: more flowers wins · ${vs}`
+          : `${b.budgetLeft} of ${b.cfg.budget} cells left · ${b.cfg.width}×${b.cfg.height} · ${vs}`
+        : vs;
 
     // Hidden panels keep their space (visibility, not display), so the arena
     // is framed the same in every phase and doesn't jump when the battle starts.
@@ -133,7 +137,7 @@ export class BattleHud {
     this.redNum.textContent = `red ${red}`;
     this.blueNum.textContent = `${blue} blue`;
     this.redBar.style.width = `${red + blue ? (100 * red) / (red + blue) : 50}%`;
-    this.gen.textContent = `territory · generation ${b.sim.generation} / ${b.cfg.generations} · cells ${cells.red} : ${cells.blue}`;
+    this.gen.textContent = `${unit} · generation ${b.sim.generation} / ${b.cfg.generations} · cells ${cells.red} : ${cells.blue}`;
 
     this.renderPalette(b);
 
@@ -170,9 +174,6 @@ export class BattleHud {
 
     if (b.phase === 'deploy') {
       if (o.kind === 'ai') {
-        const sizes = el('div', 'side-group sizes');
-        sizes.append(el('div', 'label', 'arena'));
-        for (const size of ARENA_SIZES) sizes.append(button(size, () => this.a.setSize(size), size === b.size ? 'on' : ''));
         const stars = el('div', 'stars');
         stars.title = 'AI difficulty';
         for (let i = 1; i <= 5; i++) {
@@ -182,7 +183,7 @@ export class BattleHud {
         }
         const ai = el('div', 'side-group');
         ai.append(el('div', 'label', 'AI'), stars);
-        this.side.append(sizes, ai);
+        this.side.append(ai);
       }
       const go = el('div', 'side-group');
       go.append(button('ready!', this.a.ready, 'big'), button('random', this.a.random), button('clear', this.a.clear));
@@ -206,18 +207,25 @@ export class BattleHud {
       speed.append(el('span', '', 'slow'), slider, el('span', '', 'fast'));
       const g = el('div', 'side-group');
       g.append(button(b.paused ? 'resume' : 'pause', this.a.togglePause), speed, button('skip to end', this.a.finishNow));
-      this.side.append(g);
+      this.side.append(g, el('div', 'side-hint', 'scroll to zoom in on the cells'));
       return;
     }
 
     if (b.phase === 'result' && b.outcome) {
-      const { winner, red, blue, cellsRed, cellsBlue, youWon } = b.outcome;
+      const { winner, red, blue, cellsRed, cellsBlue, youWon, extinct } = b.outcome;
+      const garden = b.cfg.garden !== undefined;
       const headline =
         youWon === true ? 'you win!' : youWon === false ? (o.kind === 'ai' ? 'the AI wins!' : 'they win!') : winner === 'draw' ? "it's a draw!" : `${winner} wins!`;
       const h = el('div', `result-title ${winner}`, headline);
       const score = el('div', 'result-score');
       score.append(el('span', 'red', String(red)), el('span', '', ' : '), el('span', 'blue', String(blue)));
-      const detail = el('div', 'result-detail', `squares painted · cells left ${cellsRed} : ${cellsBlue}`);
+      const wilted =
+        extinct === 'both' ? ' · everyone wilted' : extinct ? ` · ${extinct}'s cells all wilted` : '';
+      const detail = el(
+        'div',
+        'result-detail',
+        `${garden ? 'flowers' : 'squares painted'} · cells left ${cellsRed} : ${cellsBlue}${wilted}`,
+      );
       const actions = el('div', 'controls');
       if (o.kind !== 'replay') actions.append(button('edit army', this.a.editArmy, 'big'));
       if (o.kind === 'replay') actions.append(button('play the AI', this.a.vsAi, 'big'));

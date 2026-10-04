@@ -241,7 +241,7 @@ async function main() {
     ctx.fillStyle = '#7a6a5c';
     const status =
       mode === 'battle'
-        ? `territory red ${battle.sim.territory.red} · blue ${battle.sim.territory.blue} · generation ${battle.sim.generation}`
+        ? `${battle.cfg.garden ? 'flowers' : 'territory'} red ${battle.sim.points.red} · blue ${battle.sim.points.blue} · generation ${battle.sim.generation}`
         : `generation ${sim.generation} · ${sim.population} cells`;
     ctx.fillText(status, pad, h - pad);
     ctx.restore();
@@ -368,7 +368,6 @@ async function main() {
     random: () => battle.randomArmy(performance.now()),
     clear: () => battle.clearArmy(performance.now()),
     setStars: (s) => battle.setStars(s),
-    setSize: (size) => battle.setSize(size, performance.now()),
     challenge(name) {
       const link = battle.challengeLink(name.trim() || undefined);
       if (link) copyText(link, 'challenge link copied! send it to a friend ~');
@@ -416,6 +415,7 @@ async function main() {
     framedPhase = battle.phase;
     const a = battleHud.freeArea(cam.w, cam.h);
     cam.zoom = Math.max(4, Math.min((a.right - a.left) / width, (a.bottom - a.top) / height));
+    battle.sim.fitZoom = cam.zoom;
     const cx = (a.left + a.right) / 2;
     const cy = (a.top + a.bottom) / 2;
     cam.x = width / 2 - (cx - cam.w / 2) / cam.zoom;
@@ -607,10 +607,10 @@ async function main() {
   const challenge = fromChallengeHash(location.hash);
   const replayLink = fromReplayHash(location.hash);
   if (challenge) {
-    enterBattle({ kind: 'challenge', army: challenge.army, name: challenge.name, size: challenge.size ?? 'small' });
+    enterBattle({ kind: 'challenge', army: challenge.army, name: challenge.name, size: challenge.size ?? 'small', rules: challenge.rules ?? 'garden' });
     hud.toast(`${challenge.name || 'someone'} challenged you! deploy your blue army ~`, 5000);
   } else if (replayLink) {
-    enterBattle({ kind: 'replay', red: replayLink.red, blue: replayLink.blue, size: replayLink.size ?? 'small' });
+    enterBattle({ kind: 'replay', red: replayLink.red, blue: replayLink.blue, size: replayLink.size ?? 'small', rules: replayLink.rules ?? 'garden' });
   }
 
   // ?play starts running immediately, ?zoom=N sets pixels per cell; handy for demos and screenshots.

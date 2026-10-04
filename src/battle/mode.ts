@@ -8,10 +8,12 @@ import {
   type ArenaConfig,
   type ArenaSize,
   BLUE,
+  LEGACY_PRESETS,
   type Pt,
   RED,
   type Team,
   type Winner,
+  decideWinner,
   deployZone,
   placeArmies,
   simulateBattle,
@@ -22,16 +24,22 @@ import type { ArenaLayout, ArenaViewState } from '../render/arenaView';
 
 export type Opponent =
   | { kind: 'ai'; stars: Stars }
-  | { kind: 'challenge'; army: Pt[]; name?: string; size: ArenaSize }
-  | { kind: 'replay'; red: Pt[]; blue: Pt[]; size: ArenaSize };
+  | { kind: 'challenge'; army: Pt[]; name?: string; size: ArenaSize; rules: Rules }
+  | { kind: 'replay'; red: Pt[]; blue: Pt[]; size: ArenaSize; rules: Rules };
+
+/** 'garden' is current; 'legacy' replays links made under the earlier territory rules. */
+export type Rules = 'garden' | 'legacy';
+const PRESETS: Record<Rules, Record<ArenaSize, ArenaConfig>> = { garden: ARENA_PRESETS, legacy: LEGACY_PRESETS };
 
 export type Phase = 'deploy' | 'thinking' | 'reveal' | 'battle' | 'result';
 
 export interface BattleOutcome {
   winner: Winner;
-  /** Territory (painted squares): what decides the winner. */
+  /** What decides the winner: garden flowers (or whole-board territory under legacy rules). */
   red: number;
   blue: number;
+  /** A side that ran out of cells, which ended the battle. */
+  extinct: 'red' | 'blue' | 'both' | null;
   /** Living cells at the end: the tie-break. */
   cellsRed: number;
   cellsBlue: number;
@@ -56,8 +64,10 @@ const FINALE_GEN_PER_SEC = 4;
 const MAX_STEPS_PER_FRAME = 4;
 
 export class BattleMode {
-  size: ArenaSize = 'small';
-  cfg: ArenaConfig = ARENA_PRESETS.small;
+  /** Battles against the AI use the large arena; smaller presets only replay old links. */
+  size: ArenaSize = 'large';
+  rules: Rules = 'garden';
+  cfg: ArenaConfig = ARENA_PRESETS.large;
   sim = new BattleSim(this.cfg);
   phase: Phase = 'deploy';
   opponent: Opponent = { kind: 'ai', stars: 3 };
@@ -66,6 +76,7 @@ export class BattleMode {
   army: Pt[] = [];
   enemy: Pt[] = [];
   genPerSec = 8;
+
   /** Recording: slow down for the last FINALE_GENERATIONS generations. */
   slowFinale = false;
   /** Generation the current battle will end on (it's deterministic, so we know in advance). */
@@ -111,8 +122,10 @@ export class BattleMode {
   /** Start (or restart) against an opponent. Replays go straight to the reveal. */
   start(opponent: Opponent, now: number, keepArmy = false) {
     this.opponent = opponent;
-    // Challenges and replays bring their own arena size.
-    if (opponent.kind !== 'ai' && opponent.size !== this.size) this.applySize(opponent.size);
+    // Challenges and replays bring their own arena size and rules; the AI uses current rules.
+    const rules: Rules = opponent.kind === 'ai' ? 'garden' : opponent.rules;
+    const size = opponent.kind === 'ai' ? 'large' : opponent.size;
+    if (rules !== this.rules || size !== this.size) this.applySize(size, rules);
     this.outcome = null;
     this.paused = false;
     if (opponent.kind === 'replay') {
@@ -184,18 +197,10 @@ export class BattleMode {
     this.hooks.changed();
   }
 
-  /** Pick the arena size while deploying against the AI. Clears the army. */
-  setSize(size: ArenaSize, now: number) {
-    if (this.phase !== 'deploy' || this.opponent.kind !== 'ai' || size === this.size) return;
-    this.applySize(size);
-    this.army = [];
-    this.sim.showArmy(this.myTeam, this.army, now);
-    this.hooks.changed();
-  }
-
-  private applySize(size: ArenaSize) {
+  private applySize(size: ArenaSize, rules: Rules) {
     this.size = size;
-    this.cfg = ARENA_PRESETS[size];
+    this.rules = rules;
+    this.cfg = PRESETS[rules][size];
     this.sim = new BattleSim(this.cfg);
     this.hooks.resized();
   }
@@ -251,6 +256,11 @@ export class BattleMode {
   }
 
   update(now: number) {
+    // Deploying is done cell by cell. While watching, the framed view shows
+    // team creatures and zooming in crossfades to cells, like the sandbox.
+    const watching = this.phase === 'reveal' || this.phase === 'battle' || this.phase === 'result';
+    const fit = this.sim.fitZoom;
+    this.sim.creatures = watching ? { lo: fit * 1.25, hi: fit * 1.6 } : undefined;
     this.sim.prune(now);
     if (this.phase === 'reveal' && now - this.phaseAt >= REVEAL_MS) {
       this.setPhase('battle', now);
@@ -274,13 +284,13 @@ export class BattleMode {
 
   challengeLink(name?: string): string | null {
     if (this.myTeam !== RED || this.army.length === 0) return null;
-    return location.origin + location.pathname + toChallengeHash({ army: this.army, name, size: this.size });
+    return location.origin + location.pathname + toChallengeHash({ army: this.army, name, size: this.size, rules: this.rules });
   }
 
   replayLink(): string | null {
     if (this.enemy.length === 0) return null;
     const [red, blue] = this.myTeam === RED ? [this.army, this.enemy] : [this.enemy, this.army];
-    return location.origin + location.pathname + toReplayHash({ red, blue, size: this.size });
+    return location.origin + location.pathname + toReplayHash({ red, blue, size: this.size, rules: this.rules });
   }
 
   private speed() {
@@ -295,22 +305,25 @@ export class BattleMode {
     this.setPhase('reveal', now);
   }
 
-  /** Elimination doesn't end a battle (the survivor keeps painting); a settled board does. */
+  /** Garden rules end at the first extinction; legacy rules let the survivor keep painting. */
   private isOver() {
     const { red, blue } = this.sim.score;
-    return this.sim.generation >= this.cfg.generations || this.sim.settled || (red === 0 && blue === 0);
+    const extinct = this.cfg.endOnExtinction ? red === 0 || blue === 0 : red === 0 && blue === 0;
+    return this.sim.generation >= this.cfg.generations || this.sim.settled || extinct;
   }
 
   private finish(now: number) {
-    const { red, blue } = this.sim.territory;
+    const points = this.sim.points;
+    const { red, blue } = points;
     const cells = this.sim.score;
-    const byCells: Winner = cells.red > cells.blue ? 'red' : cells.blue > cells.red ? 'blue' : 'draw';
-    const winner: Winner = red > blue ? 'red' : blue > red ? 'blue' : byCells;
+    const winner: Winner = decideWinner(this.cfg, points, cells);
+    const extinct = cells.red === 0 && cells.blue === 0 ? 'both' : cells.red === 0 ? 'red' : cells.blue === 0 ? 'blue' : null;
     const mine = this.myTeam === RED ? 'red' : 'blue';
     this.outcome = {
       winner,
       red,
       blue,
+      extinct,
       cellsRed: cells.red,
       cellsBlue: cells.blue,
       youWon: this.opponent.kind === 'replay' || winner === 'draw' ? null : winner === mine,

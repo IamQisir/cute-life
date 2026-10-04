@@ -173,3 +173,76 @@ export function findClusters(cells: Cells, reach = 2): Cluster[] {
   }
   return clusters;
 }
+
+
+export interface TeamCluster extends Cluster { team: 1 | 2 }
+
+/** Groups same-team cells within Chebyshev reach; never merges red with blue. Wraps per axis. */
+export function findTeamClusters(
+  grid: Uint8Array, width: number, height: number, wrapX: boolean, wrapY: boolean, reach = 2,
+): TeamCluster[] {
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1
+    || grid.length !== width * height) throw new RangeError('Invalid arena dimensions or grid size');
+  if (!Number.isSafeInteger(reach) || reach < 0) throw new RangeError('reach must be a non-negative integer');
+  const visited = new Uint8Array(grid.length);
+  const queue = new Uint32Array(grid.length);
+  const unwrappedX = new Float64Array(grid.length);
+  const unwrappedY = new Float64Array(grid.length);
+  // Use shortest edge offsets even when reach exceeds an arena dimension.
+  const rx = Math.min(reach, wrapX ? Math.floor(width / 2) : width - 1);
+  const ry = Math.min(reach, wrapY ? Math.floor(height / 2) : height - 1);
+  const clusters: TeamCluster[] = [];
+  const wrap = (v: number, span: number): number => ((v % span) + span) % span;
+  for (let start = 0; start < grid.length; start++) {
+    const team = grid[start];
+    if (visited[start] || (team !== 1 && team !== 2)) continue;
+    queue[0] = start;
+    visited[start] = 1;
+    unwrappedX[start] = start % width;
+    unwrappedY[start] = Math.floor(start / width);
+    let length = 1;
+    const cells: number[] = [];
+    const points: [number, number][] = [];
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let sumX = 0, sumY = 0;
+    for (let i = 0; i < length; i++) {
+      const index = queue[i];
+      const x = index % width;
+      const y = Math.floor(index / width);
+      const ux = unwrappedX[index];
+      const uy = unwrappedY[index];
+      cells.push(key(x, y));
+      if (points.length < 17) points.push([ux, uy]);
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+      sumX += ux + 0.5; sumY += uy + 0.5;
+      for (let dy = -ry; dy <= ry; dy++) {
+        let ny = y + dy;
+        if (ny < 0 || ny >= height) {
+          if (!wrapY) continue;
+          ny = wrap(ny, height);
+        }
+        for (let dx = -rx; dx <= rx; dx++) {
+          if (!dx && !dy) continue;
+          let nx = x + dx;
+          if (nx < 0 || nx >= width) {
+            if (!wrapX) continue;
+            nx = wrap(nx, width);
+          }
+          const neighbor = ny * width + nx;
+          if (visited[neighbor] || grid[neighbor] !== team) continue;
+          visited[neighbor] = 1;
+          unwrappedX[neighbor] = ux + dx;
+          unwrappedY[neighbor] = uy + dy;
+          queue[length++] = neighbor;
+        }
+      }
+    }
+    const match = classify(points);
+    clusters.push({ cells, team, minX, minY, maxX, maxY,
+      cx: wrapX ? wrap(sumX / length, width) : sumX / length,
+      cy: wrapY ? wrap(sumY / length, height) : sumY / length,
+      kind: match.kind, family: FAMILY[match.kind], heading: match.heading });
+  }
+  return clusters;
+}

@@ -12,21 +12,28 @@ export interface ArenaConfig {
   buffer: number;
   wrapX: boolean;
   wrapY: boolean;
+  garden?: { x0: number; y0: number; x1: number; y1: number };
+  endOnExtinction?: boolean;
 }
 
-export const DEFAULT_ARENA: ArenaConfig = {
-  width: 28, height: 20, budget: 20, generations: 150, buffer: 1,
-  wrapX: false, wrapY: true,
-};
-
-/** Arena sizes players can pick. Budget grows ~ with the square root of area, generations with width. */
+/** Arena sizes players can pick. */
 export type ArenaSize = 'small' | 'medium' | 'large';
 export const ARENA_SIZES: ArenaSize[] = ['small', 'medium', 'large'];
-export const ARENA_PRESETS: Record<ArenaSize, ArenaConfig> = {
-  small: DEFAULT_ARENA,
-  medium: { ...DEFAULT_ARENA, width: 40, height: 28, budget: 32, generations: 220 },
-  large: { ...DEFAULT_ARENA, width: 56, height: 40, budget: 50, generations: 300 },
+/** Original territory rules, retained for version-1 links. */
+export const LEGACY_PRESETS: Record<ArenaSize, ArenaConfig> = {
+  small: { width: 28, height: 20, budget: 20, generations: 150, buffer: 1, wrapX: false, wrapY: true },
+  medium: { width: 40, height: 28, budget: 32, generations: 220, buffer: 1, wrapX: false, wrapY: true },
+  large: { width: 56, height: 40, budget: 50, generations: 300, buffer: 1, wrapX: false, wrapY: true },
 };
+export const ARENA_PRESETS: Record<ArenaSize, ArenaConfig> = {
+  small: { ...LEGACY_PRESETS.small, buffer: 3, endOnExtinction: true,
+    garden: { x0: 11, x1: 16, y0: 7, y1: 12 } },
+  medium: { ...LEGACY_PRESETS.medium, buffer: 4, endOnExtinction: true,
+    garden: { x0: 16, x1: 23, y0: 10, y1: 17 } },
+  large: { ...LEGACY_PRESETS.large, buffer: 5, endOnExtinction: true,
+    garden: { x0: 23, x1: 32, y0: 15, y1: 24 } },
+};
+export const DEFAULT_ARENA = ARENA_PRESETS.small;
 export type Grid = Uint8Array;
 export type Paint = Uint8Array;
 export type Winner = 'red' | 'blue' | 'draw';
@@ -36,7 +43,8 @@ export interface BattleResult {
   generations: number;
   winner: Winner;
   territory: { red: number; blue: number };
-  history?: { red: number; blue: number; territoryRed: number; territoryBlue: number }[];
+  score: { red: number; blue: number };
+  history?: { red: number; blue: number; territoryRed: number; territoryBlue: number; scoreRed: number; scoreBlue: number }[];
 }
 
 function dimensions(width: number, height: number): void {
@@ -54,6 +62,15 @@ function configError(cfg: ArenaConfig): string | undefined {
   if (!Number.isSafeInteger(cfg.generations) || cfg.generations < 0) return 'Invalid generation limit.';
   if (!Number.isSafeInteger(cfg.buffer) || cfg.buffer < 0) return 'Invalid deployment buffer.';
   if (typeof cfg.wrapX !== 'boolean' || typeof cfg.wrapY !== 'boolean') return 'Invalid arena wrapping flags.';
+  if (cfg.endOnExtinction !== undefined && typeof cfg.endOnExtinction !== 'boolean') {
+    return 'Invalid extinction flag.';
+  }
+  if (cfg.garden !== undefined) {
+    const g = cfg.garden;
+    if (!g || ![g.x0, g.x1, g.y0, g.y1].every(Number.isSafeInteger)
+      || g.x0 < 0 || g.y0 < 0 || g.x1 < g.x0 || g.y1 < g.y0
+      || g.x1 >= cfg.width || g.y1 >= cfg.height) return 'Invalid garden bounds.';
+  }
   return undefined;
 }
 
@@ -184,6 +201,27 @@ export function territory(paint: Paint): { red: number; blue: number } {
   return population(paint);
 }
 
+/** Painted garden flowers, or whole-board territory under legacy rules. */
+export function scoreOf(cfg: ArenaConfig, paint: Paint): { red: number; blue: number } {
+  if (!cfg.garden) return territory(paint);
+  let red = 0;
+  let blue = 0;
+  const { x0, x1, y0, y1 } = cfg.garden;
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const color = paint[y * cfg.width + x];
+    if (color === RED) red++;
+    else if (color === BLUE) blue++;
+  }
+  return { red, blue };
+}
+
+export function decideWinner(
+  cfg: ArenaConfig, score: { red: number; blue: number }, cells: { red: number; blue: number },
+): Winner {
+  const difference = score.red - score.blue || (cfg.garden ? 0 : cells.red - cells.blue);
+  return difference === 0 ? 'draw' : difference > 0 ? 'red' : 'blue';
+}
+
 function equalGrid(a: Grid, b: Grid): boolean {
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
   return true;
@@ -253,9 +291,11 @@ export function simulateBattle(
   const paint: Paint = new Uint8Array(grid.length);
   paintCells(paint, grid);
   let generations = 0;
-  const history = opts?.history ? [{ red, blue, territoryRed: red, territoryBlue: blue }] : undefined;
+  const initialScore = scoreOf(cfg, paint);
+  const history = opts?.history ? [{ red, blue, territoryRed: red, territoryBlue: blue,
+    scoreRed: initialScore.red, scoreBlue: initialScore.blue }] : undefined;
   const base = grid.length + 1;
-  while (generations < cfg.generations && (red > 0 || blue > 0)) {
+  while (generations < cfg.generations && (cfg.endOnExtinction ? red > 0 && blue > 0 : red > 0 || blue > 0)) {
     const packed = evolve(grid, next, neighbors, counts, reds, touched);
     red = packed % base;
     blue = Math.floor(packed / base);
@@ -263,8 +303,11 @@ export function simulateBattle(
     generations++;
     if (history) {
       const painted = territory(paint);
-      history.push({ red, blue, territoryRed: painted.red, territoryBlue: painted.blue });
+      const score = scoreOf(cfg, paint);
+      history.push({ red, blue, territoryRed: painted.red, territoryBlue: painted.blue,
+        scoreRed: score.red, scoreBlue: score.blue });
     }
+    if (cfg.endOnExtinction && (red === 0 || blue === 0)) break;
     // Compare full coloured grids: equal populations alone do not imply a cycle.
     if (equalGrid(next, grid) || (hasPrevious && equalGrid(next, previous))) break;
     const spare = previous;
@@ -274,10 +317,10 @@ export function simulateBattle(
     hasPrevious = true;
   }
   const painted = territory(paint);
-  const difference = painted.red - painted.blue || red - blue;
+  const score = scoreOf(cfg, paint);
   const result: BattleResult = {
-    red, blue, generations, territory: painted,
-    winner: difference === 0 ? 'draw' : difference > 0 ? 'red' : 'blue',
+    red, blue, generations, territory: painted, score,
+    winner: decideWinner(cfg, score, { red, blue }),
   };
   if (history) result.history = history;
   return result;

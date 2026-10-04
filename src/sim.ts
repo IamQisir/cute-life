@@ -1,6 +1,7 @@
 // Simulation state plus the bookkeeping the renderer needs for animation:
 // when each cell was born and which cells are fading out.
 
+import type { TeamCluster } from './life/clusters';
 import { type Cells, buds, key, neighborCounts, step } from './life/engine';
 
 export interface Fading {
@@ -24,6 +25,10 @@ export interface SimView {
   teamOf?(k: number): 1 | 2 | undefined;
   /** False keeps cells as individuals at every zoom (no organism view). */
   organisms?: boolean;
+  /** Battle: show team creatures instead of individual cells, at any zoom. */
+  creatures?: boolean;
+  /** Battle: same-team groups (never mixing colours), used for creatures. */
+  teamClusters?(): TeamCluster[];
 }
 
 export class Sim {

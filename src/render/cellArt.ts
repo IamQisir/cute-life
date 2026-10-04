@@ -334,6 +334,48 @@ export function drawHatch(size = 64): HTMLCanvasElement {
   return c;
 }
 
+/**
+ * A little pencil flower for garden squares. Petals are drawn white so a sprite
+ * tint colours them in (team colour once painted, pale paper while unclaimed).
+ */
+export function drawFlower(): HTMLCanvasElement {
+  const [canvas, ctx] = newCanvas();
+  const rand = rng(23);
+  const c = TEX_SIZE / 2;
+  const petals = 5;
+  for (let i = 0; i < petals; i++) {
+    const a = (i / petals) * Math.PI * 2 - Math.PI / 2 + (rand() - 0.5) * 0.15;
+    const px = c + Math.cos(a) * TEX_SIZE * 0.17;
+    const py = c + Math.sin(a) * TEX_SIZE * 0.17;
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(a);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, TEX_SIZE * 0.15, TEX_SIZE * 0.1, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.lineWidth = 2.2;
+    ctx.strokeStyle = 'rgba(70, 55, 40, 0.75)';
+    ctx.stroke();
+    ctx.restore();
+  }
+  return canvas;
+}
+
+/** The flower's yellow centre, drawn separately so it isn't tinted with the petals. */
+export function drawFlowerCentre(): HTMLCanvasElement {
+  const [canvas, ctx] = newCanvas();
+  const c = TEX_SIZE / 2;
+  ctx.beginPath();
+  ctx.arc(c, c, TEX_SIZE * 0.08, 0, Math.PI * 2);
+  ctx.fillStyle = '#f2c14e';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(70, 55, 40, 0.8)';
+  ctx.stroke();
+  return canvas;
+}
+
 /** A handwritten "z" for sleepers. */
 export function drawZ(): HTMLCanvasElement {
   const [canvas, ctx] = newCanvas();

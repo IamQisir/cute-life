@@ -241,7 +241,7 @@ async function main() {
     ctx.fillStyle = '#7a6a5c';
     const status =
       mode === 'battle'
-        ? `territory red ${battle.sim.territory.red} · blue ${battle.sim.territory.blue} · generation ${battle.sim.generation}`
+        ? `${battle.cfg.garden ? 'flowers' : 'territory'} red ${battle.sim.points.red} · blue ${battle.sim.points.blue} · generation ${battle.sim.generation}`
         : `generation ${sim.generation} · ${sim.population} cells`;
     ctx.fillText(status, pad, h - pad);
     ctx.restore();
@@ -390,6 +390,7 @@ async function main() {
     togglePause: () => battle.togglePause(),
     finishNow: () => battle.finishNow(performance.now()),
     setSpeed: (v) => (battle.genPerSec = v),
+    toggleView: () => battle.toggleView(),
     cards: cardDrag,
   });
   battleHud.show(false);
@@ -607,10 +608,10 @@ async function main() {
   const challenge = fromChallengeHash(location.hash);
   const replayLink = fromReplayHash(location.hash);
   if (challenge) {
-    enterBattle({ kind: 'challenge', army: challenge.army, name: challenge.name, size: challenge.size ?? 'small' });
+    enterBattle({ kind: 'challenge', army: challenge.army, name: challenge.name, size: challenge.size ?? 'small', rules: challenge.rules ?? 'garden' });
     hud.toast(`${challenge.name || 'someone'} challenged you! deploy your blue army ~`, 5000);
   } else if (replayLink) {
-    enterBattle({ kind: 'replay', red: replayLink.red, blue: replayLink.blue, size: replayLink.size ?? 'small' });
+    enterBattle({ kind: 'replay', red: replayLink.red, blue: replayLink.blue, size: replayLink.size ?? 'small', rules: replayLink.rules ?? 'garden' });
   }
 
   // ?play starts running immediately, ?zoom=N sets pixels per cell; handy for demos and screenshots.

@@ -163,13 +163,15 @@ export class WorldView {
     const z = cam.zoom;
     // Battles keep individual cells at every zoom: organism colours mean
     // "kind of pattern", which would clash with team colours.
-    const individuals = sim.organisms === false;
+    // Battles can instead show team creatures at every zoom.
+    const creatures = sim.creatures === true;
+    const individuals = sim.organisms === false && !creatures;
     const faces = individuals ? z >= GRID_ZOOM : z >= FADE_LO;
     const dots = individuals ? !faces : z < DOT_ZOOM;
-    const cellAlpha = individuals || dots ? 1 : faces ? Math.min(1, (z - FADE_LO) / (FADE_HI - FADE_LO)) : 0;
+    const cellAlpha = creatures ? 0 : individuals || dots ? 1 : faces ? Math.min(1, (z - FADE_LO) / (FADE_HI - FADE_LO)) : 0;
     this.cellsRoot.alpha = cellAlpha;
     this.cellsRoot.visible = cellAlpha > 0;
-    const orgAlpha = individuals || dots ? 0 : 1 - cellAlpha;
+    const orgAlpha = creatures ? 1 : individuals || dots ? 0 : 1 - cellAlpha;
     this.organisms.root.visible = orgAlpha > 0;
     this.organisms.root.alpha = orgAlpha;
     if (orgAlpha > 0) this.organisms.update(now, sim, cam);

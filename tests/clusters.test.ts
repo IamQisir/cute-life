@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classify, FAMILY, findClusters, type Kind } from '../src/life/clusters';
+import { classify, FAMILY, findClusters, findTeamClusters, type Kind } from '../src/life/clusters';
 import { fromList, key, step, toList, type Cells } from '../src/life/engine';
 import { PATTERNS, placePattern } from '../src/life/patterns';
 
@@ -208,5 +208,83 @@ describe('organism grouping', () => {
     console.info(`20k soup (reach 2): ${elapsed.toFixed(2)} ms`);
     expect(clusters.reduce((total, cluster) => total + cluster.cells.length, 0)).toBe(20000);
     expect(elapsed).toBeLessThan(200);
+  });
+});
+
+
+describe('battle team clustering', () => {
+  function grid(width: number, height: number, red: [number, number][], blue: [number, number][] = []) {
+    const out = new Uint8Array(width * height);
+    for (const [x, y] of red) out[y * width + x] = 1;
+    for (const [x, y] of blue) out[y * width + x] = 2;
+    return out;
+  }
+
+  it('keeps adjacent opposing teams separate and preserves the grid', () => {
+    const red: [number, number][] = [[2, 2], [3, 2], [2, 3], [3, 3]];
+    const blue: [number, number][] = [[4, 2], [5, 2], [4, 3], [5, 3]];
+    const input = grid(10, 10, red, blue);
+    const before = input.slice();
+    const clusters = findTeamClusters(input, 10, 10, false, true);
+    expect(clusters.map((c) => [c.team, c.kind])).toEqual([[1, 'block'], [2, 'block']]);
+    expect(new Set(clusters[0].cells)).toEqual(fromList(red));
+    expect(new Set(clusters[1].cells)).toEqual(fromList(blue));
+    expect(input).toEqual(before);
+  });
+
+  it.each([0, 1, 2, 3])('recognises every glider phase across a vertical seam (phase %i)', (phase) => {
+    const pts = toList(advance(seed(['.O.', '..O', 'OOO']), phase));
+    const red: [number, number][] = pts.map(([x, y]) => [x + 3, (y + 9) % 12]);
+    const clusters = findTeamClusters(grid(12, 12, red), 12, 12, false, true);
+    expect(clusters).toHaveLength(1);
+    const c = clusters[0];
+    expect(c).toMatchObject({ team: 1, kind: 'glider', family: 'spaceship', heading: [1, 1] });
+    expect(new Set(c.cells)).toEqual(fromList(red));
+    expect(c.cx).toBeCloseTo(3.5 + pts.reduce((n, [x]) => n + x, 0) / 5);
+    expect(c.cy).toBeCloseTo((9.5 + pts.reduce((n, [, y]) => n + y, 0) / 5) % 12);
+    expect(c.minY).toBe(Math.min(...red.map(([, y]) => y)));
+    expect(c.maxY).toBe(Math.max(...red.map(([, y]) => y)));
+  });
+
+  it('unwraps both axes and retains a mirrored glider heading', () => {
+    const pts = toList(seed(['.O.', 'O..', 'OOO']));
+    const red: [number, number][] = pts.map(([x, y]) => [(x + 9) % 10, (y + 9) % 10]);
+    const c = findTeamClusters(grid(10, 10, red), 10, 10, true, true)[0];
+    expect(c).toMatchObject({ kind: 'glider', heading: [-1, 1], minX: 0, maxX: 9, minY: 0, maxY: 9 });
+    expect(c.cx).toBeCloseTo((9.5 + pts.reduce((n, [x]) => n + x, 0) / 5) % 10);
+  });
+
+  it('never joins cells across a non-wrapping axis and respects reach', () => {
+    const input = grid(12, 12, [[0, 0], [11, 0], [0, 11]]);
+    expect(findTeamClusters(input, 12, 12, false, false)).toHaveLength(3);
+    expect(findTeamClusters(input, 12, 12, false, true)).toHaveLength(2);
+    expect(findTeamClusters(input, 12, 12, true, false)).toHaveLength(2);
+    expect(findTeamClusters(input, 12, 12, true, true)).toHaveLength(1);
+    const separated = grid(12, 12, [[1, 1], [3, 3]]);
+    expect(findTeamClusters(separated, 12, 12, true, true, 1)).toHaveLength(2);
+    expect(findTeamClusters(separated, 12, 12, true, true)).toHaveLength(1);
+    expect(findTeamClusters(separated, 12, 12, true, true, 0)).toHaveLength(2);
+  });
+
+  it('returns no clusters for an empty grid and validates dimensions and reach', () => {
+    expect(findTeamClusters(new Uint8Array(100), 10, 10, false, true)).toEqual([]);
+    expect(() => findTeamClusters(new Uint8Array(99), 10, 10, false, true)).toThrow(RangeError);
+    for (const reach of [-1, 0.5, NaN, Infinity]) {
+      expect(() => findTeamClusters(new Uint8Array(100), 10, 10, false, true, reach)).toThrow(RangeError);
+    }
+  });
+
+  it('handles a full large arena well under 5 ms', () => {
+    const input = new Uint8Array(56 * 40);
+    for (let i = 0; i < input.length; i++) input[i] = i % 2 + 1;
+    for (let i = 0; i < 10; i++) findTeamClusters(input, 56, 40, false, true);
+    const start = performance.now();
+    for (let i = 0; i < 100; i++) findTeamClusters(input, 56, 40, false, true);
+    const ms = (performance.now() - start) / 100;
+    console.info(`Full battle arena team clustering: ${ms.toFixed(3)} ms`);
+    expect(ms).toBeLessThan(5);
+    const clusters = findTeamClusters(input, 56, 40, false, true);
+    expect(clusters).toHaveLength(2);
+    expect(clusters.reduce((total, c) => total + c.cells.length, 0)).toBe(input.length);
   });
 });

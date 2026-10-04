@@ -11,7 +11,7 @@ import { type Cluster, type Family, findClusters } from '../life/clusters';
 import { key, keyX, keyY } from '../life/engine';
 import type { SimView } from '../sim';
 import type { Camera } from './camera';
-import { MOODS, type Mood, PALETTES, TEX_SIZE, drawFaceOnly, drawHatch, drawNote, drawZ } from './cellArt';
+import { MOODS, type Mood, PALETTES, type Palette, TEAM_PALETTES, TEX_SIZE, drawFaceOnly, drawHatch, drawNote, drawZ } from './cellArt';
 import { SpritePool, cellHash, tex } from './util';
 
 const FAMILY_PALETTE: Record<Family, number> = { still: 3, oscillator: 2, spaceship: 0, blob: 1 };
@@ -21,6 +21,12 @@ const LINKS: [number, number][] = [
   [1, 0], [2, 0], [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1], [-2, 2], [-1, 2], [0, 2], [1, 2], [2, 2],
 ];
 const hex = (c: string) => parseInt(c.slice(1), 16);
+
+/** Membrane style: team colour in battles, pattern family in the sandbox. */
+type Styled = Cluster & { team?: 1 | 2 };
+const styleOf = (c: Styled): string => (c.team ? `team${c.team}` : c.family);
+const paletteOf = (style: string): Palette =>
+  style === 'team1' ? TEAM_PALETTES[1] : style === 'team2' ? TEAM_PALETTES[2] : PALETTES[FAMILY_PALETTE[style as Family]];
 
 interface Built {
   version: number;
@@ -43,7 +49,7 @@ export class OrganismView {
   private faces: Record<Mood, Texture>;
   private zTex = tex(drawZ());
   private noteTex = tex(drawNote());
-  private clusters: Cluster[] = [];
+  private clusters: Styled[] = [];
   private clusterVersion = -1;
   private built: Built | null = null;
 
@@ -61,7 +67,7 @@ export class OrganismView {
 
   private ensureClusters(sim: SimView) {
     if (this.clusterVersion === sim.version) return;
-    this.clusters = findClusters(sim.cells);
+    this.clusters = sim.teamClusters ? sim.teamClusters() : findClusters(sim.cells);
     this.clusterVersion = sim.version;
   }
 
@@ -84,17 +90,18 @@ export class OrganismView {
     g.clear();
     const outlinePx = 1.6 / cam.zoom;
     const visible = this.clusters.filter((c) => c.maxX + 1 >= b.x0 && c.minX <= b.x1 && c.maxY + 1 >= b.y0 && c.minY <= b.y1);
+    const styles = [...new Set(visible.map(styleOf))];
 
     // Pass 1 draws everything a bit fatter in the outline colour, pass 2 the
     // body on top: the union of circles and bridges reads as one membrane.
     for (const pass of ['outline', 'body'] as const) {
-      for (const fam of Object.keys(FAMILY_PALETTE) as Family[]) {
-        const p = PALETTES[FAMILY_PALETTE[fam]];
+      for (const style of styles) {
+        const p = paletteOf(style);
         const color = hex(pass === 'outline' ? p.outline : p.body);
         const grow = pass === 'outline' ? outlinePx : 0;
         let any = false;
         for (const c of visible) {
-          if (c.family !== fam) continue;
+          if (styleOf(c) !== style) continue;
           any = true;
           for (const k of c.cells) g.circle(keyX(k) + 0.5, keyY(k) + 0.5, BODY_R + grow);
         }
@@ -103,7 +110,7 @@ export class OrganismView {
         for (const thick of [true, false]) {
           let drew = false;
           for (const c of visible) {
-            if (c.family !== fam) continue;
+            if (styleOf(c) !== style) continue;
             const members = new Set(c.cells);
             for (const k of c.cells) {
               const x = keyX(k);
@@ -122,11 +129,11 @@ export class OrganismView {
     }
 
     // Nuclei: one per cell, so you can still count the cells inside.
-    for (const fam of Object.keys(FAMILY_PALETTE) as Family[]) {
-      const p = PALETTES[FAMILY_PALETTE[fam]];
+    for (const style of styles) {
+      const p = paletteOf(style);
       let any = false;
       for (const c of visible) {
-        if (c.family !== fam) continue;
+        if (styleOf(c) !== style) continue;
         any = true;
         for (const k of c.cells) g.circle(keyX(k) + 0.5, keyY(k) + 0.5, 0.2);
       }

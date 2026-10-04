@@ -32,8 +32,9 @@ interface Shape {
   points: Pt[];
   maxX: number;
   maxY: number;
-  /** Horizontal direction of travel for spaceships (-1, 0, 1); 0 for everything else. */
+  /** Direction of travel for spaceships (-1, 0, 1 per axis); zero otherwise. */
   headingX: number;
+  headingY: number;
 }
 
 type Role = 'traveller' | 'grower' | 'stationary';
@@ -41,9 +42,9 @@ const ROLE: Record<string, Role> = {
   glider: 'traveller', lwss: 'traveller', acorn: 'grower', 'r-pentomino': 'grower',
   block: 'stationary', blinker: 'stationary', toad: 'stationary',
 };
-/** Share of picks per role: mostly armies that move toward the enemy. */
+/** Share of picks per role: mostly armies that travel toward the objective. */
 const ROLE_WEIGHTS: [Role, number][] = [['traveller', 0.5], ['grower', 0.25], ['stationary', 0.25]];
-const AIM_AT_ENEMY = 0.8;
+const AIM_AT_TARGET = 0.8;
 
 /** All distinct rotations/mirrors of a pattern, with each one's direction of travel. */
 function orientations(rows: string[]): Shape[] {
@@ -61,11 +62,13 @@ function orientations(rows: string[]): Shape[] {
       const key = pts.join(';');
       if (seen.has(key)) continue;
       seen.add(key);
+      const heading = classify(pts).heading;
       out.push({
         points: pts,
         maxX: Math.max(...pts.map(([x]) => x)),
         maxY: Math.max(...pts.map(([, y]) => y)),
-        headingX: classify(pts).heading[0],
+        headingX: heading[0],
+        headingY: heading[1],
       });
     }
   }
@@ -78,7 +81,8 @@ const PALETTE: { role: Role; shapes: Shape[] }[] = BATTLE_PATTERN_NAMES.map((nam
   return { role: ROLE[name] ?? 'stationary', shapes: orientations(p.rows) };
 });
 
-function pickShape(random: Random, towardRight: boolean, room: number): Shape | null {
+interface Pick { shape: Shape; shapes: Shape[]; aimed: boolean }
+function pickShape(random: Random, towardRight: boolean, room: number): Pick | null {
   let r = random();
   let role: Role = 'stationary';
   for (const [name, weight] of ROLE_WEIGHTS) {
@@ -91,11 +95,12 @@ function pickShape(random: Random, towardRight: boolean, room: number): Shape | 
   const options = PALETTE.filter((e) => e.role === role && e.shapes[0].points.length <= room);
   if (!options.length) return null;
   const { shapes } = options[integer(random, options.length)];
-  if (role === 'traveller' && random() < AIM_AT_ENEMY) {
-    const aimed = shapes.filter((s) => (towardRight ? s.headingX > 0 : s.headingX < 0));
-    if (aimed.length) return aimed[integer(random, aimed.length)];
+  const aimed = role === 'traveller' && random() < AIM_AT_TARGET;
+  if (aimed) {
+    const horizontal = shapes.filter((s) => (towardRight ? s.headingX > 0 : s.headingX < 0));
+    if (horizontal.length) return { shape: horizontal[integer(random, horizontal.length)], shapes, aimed };
   }
-  return shapes[integer(random, shapes.length)];
+  return { shape: shapes[integer(random, shapes.length)], shapes, aimed };
 }
 
 /** A connected, irregular clump: only used for the AI's sample opponents. */
@@ -114,7 +119,34 @@ function clump(random: Random): Shape {
       points.push([x, y]);
     }
   }
-  return { points, maxX: Math.max(...points.map(([x]) => x)), maxY: Math.max(...points.map(([, y]) => y)), headingX: 0 };
+  return { points, maxX: Math.max(...points.map(([x]) => x)), maxY: Math.max(...points.map(([, y]) => y)), headingX: 0, headingY: 0 };
+}
+
+function shortestDelta(delta: number, span: number, wrap: boolean): number {
+  if (!wrap) return delta;
+  if (delta > span / 2) return delta - span;
+  if (delta < -span / 2) return delta + span;
+  return delta;
+}
+
+/** Re-aim after placement, keeping the bounding box (and therefore placement) valid. */
+function aimAtGarden(cfg: ArenaConfig, pick: Pick, x: number, y: number, random: Random): Shape {
+  const garden = cfg.garden;
+  if (!garden || !pick.aimed) return pick.shape;
+  const { maxX, maxY } = pick.shape;
+  const horizontalSign = Math.sign(shortestDelta((garden.x0 + garden.x1) / 2 - (x + maxX / 2), cfg.width, cfg.wrapX));
+  let verticalSign = 0;
+  if (y + maxY < garden.y0 || y > garden.y1) {
+    const cy = y + maxY / 2;
+    const toTop = shortestDelta(garden.y0 - cy, cfg.height, cfg.wrapY);
+    const toBottom = shortestDelta(garden.y1 - cy, cfg.height, cfg.wrapY);
+    verticalSign = Math.sign(Math.abs(toTop) <= Math.abs(toBottom) ? toTop : toBottom);
+  }
+  const horizontal = pick.shapes.filter((shape) => shape.maxX === maxX && shape.maxY === maxY
+    && shape.headingX === horizontalSign);
+  const both = horizontal.filter((shape) => !verticalSign || shape.headingY === verticalSign);
+  const options = both.length ? both : horizontal;
+  return options.length ? options[integer(random, options.length)] : pick.shape;
 }
 
 function candidate(cfg: ArenaConfig, team: Team, random: Random, clumpsOnly = false): Pt[] {
@@ -141,8 +173,10 @@ function candidate(cfg: ArenaConfig, team: Team, random: Random, clumpsOnly = fa
     // With a horizontal seam, the outer edge can be the shortest enemy route.
     // At walls, aim across the centre toward the enemy deployment zone.
     const towardRight = cfg.wrapX ? x0 > (zone.x0 + zone.x1) / 2 : team === RED;
-    const shape = clumpsOnly ? clump(random) : pickShape(random, towardRight, room);
-    if (!shape || shape.points.length > room) continue;
+    const pick = clumpsOnly ? { shape: clump(random), shapes: [], aimed: false }
+      : pickShape(random, towardRight, room);
+    if (!pick || pick.shape.points.length > room) continue;
+    let shape = pick.shape;
     const { maxX, maxY } = shape;
     if (maxX >= width || maxY >= cfg.height) continue;
     const x = compact
@@ -151,6 +185,7 @@ function candidate(cfg: ArenaConfig, team: Team, random: Random, clumpsOnly = fa
     const y = compact
       ? Math.max(0, Math.min(cfg.height - maxY - 1, center[1] + integer(random, radius * 2 + 1) - radius))
       : integer(random, cfg.height - maxY);
+    shape = aimAtGarden(cfg, pick, x, y, random);
     const placed = shape.points.map(([px, py]): Pt => [x + px, y + py]);
     if (placed.some(([px, py]) => occupied.has(py * cfg.width + px))) continue;
     for (const [px, py] of placed) add(px, py);
@@ -204,8 +239,8 @@ export function chooseDeployment(
         ? simulateBattle(cfg, points, opponent)
         : simulateBattle(cfg, opponent, points);
       total += team === RED
-        ? result.territory.red - result.territory.blue
-        : result.territory.blue - result.territory.red;
+        ? result.score.red - result.score.blue
+        : result.score.blue - result.score.red;
     }
     return total / opponents.length;
   };

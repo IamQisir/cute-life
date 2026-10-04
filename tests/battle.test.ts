@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  ARENA_PRESETS, ARENA_SIZES, BLUE, DEFAULT_ARENA, EMPTY, RED, deployZone, emptyGrid, neighborCountsGrid,
-  paintCells, placeArmies, population, simulateBattle, stepGrid, territory, validateDeployment,
+  ARENA_PRESETS, LEGACY_PRESETS, ARENA_SIZES, BLUE, DEFAULT_ARENA, EMPTY, RED, deployZone, emptyGrid, neighborCountsGrid,
+  paintCells, placeArmies, population, scoreOf, decideWinner, simulateBattle, stepGrid, territory, validateDeployment,
 } from '../src/battle/arena';
 import type { ArenaConfig, Grid, Pt, Team } from '../src/battle/arena';
 import { AI_EFFORT, chooseDeployment } from '../src/battle/ai';
@@ -11,8 +11,9 @@ import {
 } from '../src/battle/challenge';
 import { encodeRle } from '../src/share/rle';
 import { PATTERNS } from '../src/life/patterns';
+import { classify } from '../src/life/clusters';
 
-const cfg = DEFAULT_ARENA;
+const cfg = LEGACY_PRESETS.small;
 const sorted = (points: Pt[]): Pt[] => points.slice().sort((a, b) => a[1] - b[1] || a[0] - b[0]);
 function colored(width: number, height: number, red: Pt[], blue: Pt[] = []): Grid {
   const grid = emptyGrid({ ...cfg, width, height });
@@ -27,7 +28,7 @@ function cells(grid: Grid, width: number, team: Team): Pt[] {
 }
 
 describe('immigration Life with configurable arena edges', () => {
-  it('exports defaults and allocates independent, empty grids', () => {
+  it('preserves legacy defaults and allocates independent, empty grids', () => {
     expect(cfg).toEqual({
       width: 28, height: 20, budget: 20, generations: 150, buffer: 1, wrapX: false, wrapY: true,
     });
@@ -215,33 +216,33 @@ describe('deployment and battles', () => {
   it('stops on a still life after elimination, or when both sides become empty', () => {
     const block: Pt[] = [[20, 1], [21, 1], [20, 2], [21, 2]];
     expect(simulateBattle(cfg, [[1, 1]], block, { history: true })).toEqual({
-      red: 0, blue: 4, winner: 'blue', generations: 2, territory: { red: 1, blue: 4 },
+      red: 0, blue: 4, winner: 'blue', generations: 2, territory: { red: 1, blue: 4 }, score: { red: 1, blue: 4 },
       history: [
-        { red: 1, blue: 4, territoryRed: 1, territoryBlue: 4 },
-        { red: 0, blue: 4, territoryRed: 1, territoryBlue: 4 },
-        { red: 0, blue: 4, territoryRed: 1, territoryBlue: 4 },
+        { red: 1, blue: 4, territoryRed: 1, territoryBlue: 4, scoreRed: 1, scoreBlue: 4 },
+        { red: 0, blue: 4, territoryRed: 1, territoryBlue: 4, scoreRed: 1, scoreBlue: 4 },
+        { red: 0, blue: 4, territoryRed: 1, territoryBlue: 4, scoreRed: 1, scoreBlue: 4 },
       ],
     });
     expect(simulateBattle(cfg, [], block)).toEqual({
-      red: 0, blue: 4, winner: 'blue', generations: 1, territory: { red: 0, blue: 4 },
+      red: 0, blue: 4, winner: 'blue', generations: 1, territory: { red: 0, blue: 4 }, score: { red: 0, blue: 4 },
     });
     expect(simulateBattle(cfg, [[1, 1]], [[20, 1]])).toEqual({
-      red: 0, blue: 0, winner: 'draw', generations: 1, territory: { red: 1, blue: 1 },
+      red: 0, blue: 0, winner: 'draw', generations: 1, territory: { red: 1, blue: 1 }, score: { red: 1, blue: 1 },
     });
   });
 
   it('stops a blinker after two generations and records population and accumulated territory', () => {
     const result = simulateBattle({ ...cfg, generations: 12 }, red, blue, { history: true });
-    expect(result).toMatchObject({ red: 3, blue: 3, winner: 'draw', generations: 2, territory: { red: 5, blue: 5 } });
+    expect(result).toMatchObject({ red: 3, blue: 3, winner: 'draw', generations: 2, territory: { red: 5, blue: 5 }, score: { red: 5, blue: 5 } });
     expect(result.history).toEqual([
-      { red: 3, blue: 3, territoryRed: 3, territoryBlue: 3 },
-      { red: 3, blue: 3, territoryRed: 5, territoryBlue: 5 },
-      { red: 3, blue: 3, territoryRed: 5, territoryBlue: 5 },
+      { red: 3, blue: 3, territoryRed: 3, territoryBlue: 3, scoreRed: 3, scoreBlue: 3 },
+      { red: 3, blue: 3, territoryRed: 5, territoryBlue: 5, scoreRed: 5, scoreBlue: 5 },
+      { red: 3, blue: 3, territoryRed: 5, territoryBlue: 5, scoreRed: 5, scoreBlue: 5 },
     ]);
     expect(simulateBattle(cfg, red, blue)).not.toHaveProperty('history');
     expect(simulateBattle({ ...cfg, generations: 0 }, red, blue).generations).toBe(0);
     expect(simulateBattle(cfg, [], [], { history: true }).history).toEqual([
-      { red: 0, blue: 0, territoryRed: 0, territoryBlue: 0 },
+      { red: 0, blue: 0, territoryRed: 0, territoryBlue: 0, scoreRed: 0, scoreBlue: 0 },
     ]);
   });
 
@@ -263,20 +264,20 @@ describe('deployment and battles', () => {
     const redBlock: Pt[] = [[3, 1], [4, 1], [3, 2], [4, 2]];
     const blueBlock: Pt[] = [[20, 1], [21, 1], [20, 2], [21, 2]];
     expect(simulateBattle(cfg, red, blueBlock)).toMatchObject({
-      red: 3, blue: 4, territory: { red: 5, blue: 4 }, winner: 'red',
+      red: 3, blue: 4, territory: { red: 5, blue: 4 }, score: { red: 5, blue: 4 }, winner: 'red',
     });
     expect(simulateBattle(cfg, redBlock, blue)).toMatchObject({
-      red: 4, blue: 3, territory: { red: 4, blue: 5 }, winner: 'blue',
+      red: 4, blue: 3, territory: { red: 4, blue: 5 }, score: { red: 4, blue: 5 }, winner: 'blue',
     });
     expect(simulateBattle(cfg, red, [...blueBlock, [25, 15]])).toMatchObject({
-      red: 3, blue: 4, territory: { red: 5, blue: 5 }, winner: 'blue',
+      red: 3, blue: 4, territory: { red: 5, blue: 5 }, score: { red: 5, blue: 5 }, winner: 'blue',
     });
     expect(simulateBattle(cfg, [...redBlock, [1, 15]], blue)).toMatchObject({
-      red: 4, blue: 3, territory: { red: 5, blue: 5 }, winner: 'red',
+      red: 4, blue: 3, territory: { red: 5, blue: 5 }, score: { red: 5, blue: 5 }, winner: 'red',
     });
     expect(simulateBattle(cfg, red, blue).winner).toBe('draw');
     expect(simulateBattle(cfg, [[1, 1], [5, 5]], [[20, 1]])).toMatchObject({
-      red: 0, blue: 0, territory: { red: 2, blue: 1 }, winner: 'red', generations: 1,
+      red: 0, blue: 0, territory: { red: 2, blue: 1 }, score: { red: 2, blue: 1 }, winner: 'red', generations: 1,
     });
   });
 });
@@ -369,12 +370,12 @@ describe('seeded AI', () => {
 });
 
 describe('challenge and replay links', () => {
-  const red: Pt[] = [[1, 1], [2, 1], [3, 2], [12, 19]];
-  const blue: Pt[] = [[15, 0], [20, 2], [21, 2], [27, 19]];
+  const red: Pt[] = [[1, 1], [2, 1], [3, 2], [10, 19]];
+  const blue: Pt[] = [[17, 0], [20, 2], [21, 2], [27, 19]];
 
   it.each([undefined, 'Ada'])('round-trips a challenge with name %s, independently of point order', (name) => {
     const hash = toChallengeHash({ army: red.slice().reverse(), name });
-    expect(hash.startsWith('#c=1&a=')).toBe(true);
+    expect(hash.startsWith('#c=2&a=')).toBe(true);
     const decoded = fromChallengeHash(hash);
     expect(sorted(decoded!.army)).toEqual(sorted(red));
     expect(decoded?.name).toBe(name);
@@ -383,13 +384,13 @@ describe('challenge and replay links', () => {
 
   it('round-trips replays and empty armies, with custom arena support', () => {
     const hash = toReplayHash({ red: red.slice().reverse(), blue: blue.slice().reverse() });
-    expect(hash.startsWith('#r=1&a=')).toBe(true);
+    expect(hash.startsWith('#r=2&a=')).toBe(true);
     const decoded = fromReplayHash(hash);
     expect(sorted(decoded!.red)).toEqual(sorted(red));
     expect(sorted(decoded!.blue)).toEqual(sorted(blue));
     expect(fromChallengeHash(hash)).toBeNull();
-    expect(fromReplayHash(toReplayHash({ red: [], blue: [] }))).toEqual({ red: [], blue: [], size: 'small' });
-    expect(fromChallengeHash(toChallengeHash({ army: [] }))).toEqual({ army: [], size: 'small' });
+    expect(fromReplayHash(toReplayHash({ red: [], blue: [] }))).toEqual({ red: [], blue: [], size: 'small', rules: 'garden' });
+    expect(fromChallengeHash(toChallengeHash({ army: [] }))).toEqual({ army: [], size: 'small', rules: 'garden' });
     const small: ArenaConfig = { ...cfg, width: 10, height: 8, budget: 4, buffer: 1, generations: 20 };
     const army: Pt[] = [[0, 0], [3, 7]];
     expect(fromChallengeHash(toChallengeHash({ army }), small)?.army).toEqual(army);
@@ -410,7 +411,7 @@ describe('challenge and replay links', () => {
     const params = new URLSearchParams(hash.slice(1));
     params.set('n', '  \u0001ABCDEFGHIJKLMNOPQRSTUVWXYZ\u0085  ');
     expect(fromChallengeHash(`#${params}`)?.name).toBe('ABCDEFGHIJKLMNOPQRSTUVWX');
-    expect(fromChallengeHash(toChallengeHash({ army: red, name: ' \t\n ' }))).toEqual({ army: sorted(red), size: 'small' });
+    expect(fromChallengeHash(toChallengeHash({ army: red, name: ' \t\n ' }))).toEqual({ army: sorted(red), size: 'small', rules: 'garden' });
     expect(fromChallengeHash(toChallengeHash({ army: red, name: '😀'.repeat(30) }))?.name).toBe('😀'.repeat(24));
   });
 
@@ -462,8 +463,8 @@ describe('challenge and replay links', () => {
 });
 
 describe('arena sizes in links', () => {
-  const largeRed: Pt[] = [[0, 0], [20, 30], [24, 39]]; // only fits the large arena
-  const largeBlue: Pt[] = [[31, 0], [55, 39]];
+  const largeRed: Pt[] = [[0, 0], [20, 30], [22, 39]]; // only fits the large arena
+  const largeBlue: Pt[] = [[33, 0], [55, 39]];
 
   it('round-trips the size for challenges and replays', () => {
     const c = fromChallengeHash(toChallengeHash({ army: largeRed, size: 'large' }));
@@ -474,7 +475,7 @@ describe('arena sizes in links', () => {
   });
 
   it('treats a missing size as small and omits it when encoding small', () => {
-    const hash = toChallengeHash({ army: [[1, 1]], size: 'small' });
+    const hash = toChallengeHash({ army: [[1, 1]], size: 'small', rules: 'garden' });
     expect(hash).not.toContain('s=');
     expect(fromChallengeHash(hash)?.size).toBe('small');
   });
@@ -522,4 +523,167 @@ describe('AI uses the whole palette', () => {
       expect(armies.some((a) => contains(a, p.rows)), name).toBe(true);
     }
   });
+});
+
+
+describe('garden rules', () => {
+  it('uses garden small by default and keeps each garden entirely in the neutral deployment gap', () => {
+    expect(DEFAULT_ARENA).toBe(ARENA_PRESETS.small);
+    const expected = {
+      small: [28, 20, 20, 150, 3, 11, 16, 7, 12],
+      medium: [40, 28, 32, 220, 4, 16, 23, 10, 17],
+      large: [56, 40, 50, 300, 5, 23, 32, 15, 24],
+    };
+    for (const size of ARENA_SIZES) {
+      const cfg = ARENA_PRESETS[size];
+      const garden = cfg.garden!;
+      expect([cfg.width, cfg.height, cfg.budget, cfg.generations, cfg.buffer,
+        garden.x0, garden.x1, garden.y0, garden.y1]).toEqual(expected[size]);
+      expect(garden.x0).toBeGreaterThan(deployZone(cfg, RED).x1);
+      expect(garden.x1).toBeLessThan(deployZone(cfg, BLUE).x0);
+      expect(garden.y0).toBeGreaterThanOrEqual(0);
+      expect(garden.y1).toBeLessThan(cfg.height);
+      expect(cfg).toMatchObject({ wrapX: false, wrapY: true, endOnExtinction: true });
+      expect(LEGACY_PRESETS[size]).toMatchObject({ buffer: 1 });
+      expect(LEGACY_PRESETS[size].garden).toBeUndefined();
+    }
+  });
+
+  it('counts only inclusive garden paint and draws ties regardless of surviving population', () => {
+    const cfg = DEFAULT_ARENA;
+    const paint = emptyGrid(cfg);
+    const g = cfg.garden!;
+    for (const [x, y] of [[g.x0, g.y0], [g.x1, g.y1], [0, 0]]) paint[y * cfg.width + x] = RED;
+    paint[g.y0 * cfg.width + g.x1] = BLUE;
+    expect(scoreOf(cfg, paint)).toEqual({ red: 2, blue: 1 });
+    expect(scoreOf(LEGACY_PRESETS.small, paint)).toEqual({ red: 3, blue: 1 });
+    expect(decideWinner(cfg, { red: 1, blue: 1 }, { red: 20, blue: 0 })).toBe('draw');
+    expect(decideWinner(cfg, { red: 1, blue: 2 }, { red: 20, blue: 0 })).toBe('blue');
+    expect(decideWinner(LEGACY_PRESETS.small, { red: 1, blue: 1 }, { red: 20, blue: 0 })).toBe('red');
+  });
+
+  it('paints the first extinction generation then stops, including initial extinction', () => {
+    const cfg = DEFAULT_ARENA;
+    const glider: Pt[] = [[20, 1], [19, 2], [21, 3], [20, 3], [19, 3]];
+    const result = simulateBattle(cfg, [[1, 1]], glider, { history: true });
+    expect(result).toMatchObject({ red: 0, blue: 5, generations: 1, winner: 'draw',
+      score: { red: 0, blue: 0 }, territory: { red: 1, blue: 7 } });
+    expect(result.history).toHaveLength(2);
+    expect(result.history![1]).toMatchObject({ scoreRed: 0, scoreBlue: 0, territoryBlue: 7 });
+    expect(simulateBattle(cfg, [], glider).generations).toBe(0);
+    expect(simulateBattle({ ...cfg, endOnExtinction: false }, [[1, 1]], glider).generations).toBeGreaterThan(1);
+    // A birth in the objective on the extinction step still counts.
+    const custom = { ...LEGACY_PRESETS.small, garden: { x0: 4, x1: 4, y0: 3, y1: 5 }, endOnExtinction: true };
+    expect(simulateBattle(custom, [[3, 4], [4, 4], [5, 4]], [[20, 1]])).toMatchObject({
+      generations: 1, winner: 'red', score: { red: 3, blue: 0 },
+    });
+  });
+
+  it('still stops a settled garden board and reports score throughout history', () => {
+    const cfg = { ...DEFAULT_ARENA, garden: { x0: 3, x1: 5, y0: 3, y1: 5 } };
+    const result = simulateBattle(cfg, [[3, 4], [4, 4], [5, 4]], [[20, 4], [21, 4], [22, 4]], { history: true });
+    expect(result.generations).toBe(2);
+    expect(result.score).toEqual({ red: 5, blue: 0 });
+    expect(result.history!.map((entry) => entry.scoreRed)).toEqual([3, 5, 5]);
+  });
+
+  it('rejects malformed garden bounds and extinction flags', () => {
+    for (const garden of [ { x0: -1, x1: 2, y0: 0, y1: 2 },
+      { x0: 3, x1: 2, y0: 0, y1: 2 }, { x0: 0, x1: 28, y0: 0, y1: 2 },
+      { x0: 0, x1: 2, y0: 0.5, y1: 2 } ]) {
+      expect(() => emptyGrid({ ...DEFAULT_ARENA, garden })).toThrow(RangeError);
+    }
+    expect(() => emptyGrid({ ...DEFAULT_ARENA, endOnExtinction: 1 as unknown as boolean })).toThrow(RangeError);
+  });
+});
+
+describe('versioned battle links', () => {
+  it('accepts a legacy-only deployment in v1 and rejects the identical payload in v2', () => {
+    const hash = toChallengeHash({ army: [[12, 19]], rules: 'legacy', name: 'Old army' });
+    expect(hash).toMatch(/^#c=1&/);
+    expect(fromChallengeHash(hash)).toEqual({ army: [[12, 19]], rules: 'legacy', size: 'small', name: 'Old army' });
+    expect(fromChallengeHash(hash.replace('c=1', 'c=2'))).toBeNull();
+    expect(fromChallengeHash(hash.replace('c=1', 'c=3'))).toBeNull();
+  });
+
+  it('round-trips both versions for every size and preserves the legacy replay winner', () => {
+    for (const size of ARENA_SIZES) for (const rules of ['garden', 'legacy'] as const) {
+      const cfg = (rules === 'legacy' ? LEGACY_PRESETS : ARENA_PRESETS)[size];
+      const red: Pt[] = [[3, 4], [4, 4], [5, 4]];
+      const x = deployZone(cfg, BLUE).x0 + 1;
+      const blue: Pt[] = [[x, 1], [x + 1, 1], [x, 2], [x + 1, 2]];
+      const challenge = fromChallengeHash(toChallengeHash({ army: red, size, rules }));
+      expect(challenge).toEqual({ army: red, size, rules });
+      const hash = toReplayHash({ red, blue, size, rules });
+      expect(hash.startsWith(`#r=${rules === 'legacy' ? 1 : 2}&`)).toBe(true);
+      const replay = fromReplayHash(hash)!;
+      expect(replay).toEqual({ red, blue, size, rules });
+      const replayCfg = (replay.rules === 'legacy' ? LEGACY_PRESETS : ARENA_PRESETS)[replay.size!];
+      expect(simulateBattle(replayCfg, replay.red, replay.blue)).toEqual(simulateBattle(cfg, red, blue));
+      expect(simulateBattle(replayCfg, replay.red, replay.blue).winner).toBe(rules === 'legacy' ? 'red' : 'draw');
+      expect(fromReplayHash(hash.replace(/r=[12]/, 'r=3'))).toBeNull();
+    }
+  });
+});
+
+describe('garden AI strength and timing', () => {
+  it('mostly aims gliders horizontally and vertically at the garden, choosing the shorter wrapped route', () => {
+    for (const wrapY of [false, true]) {
+      const cfg = { ...DEFAULT_ARENA, budget: 5, wrapY,
+        garden: { x0: 11, x1: 16, y0: 2, y1: 5 } };
+      let gliders = 0, aimed = 0, seamRoutes = 0;
+      for (const team of [RED, BLUE] as const) for (let seed = 0; seed < 400; seed++) {
+        const points = chooseDeployment(cfg, team, 1, seed);
+        const match = classify(points);
+        if (match.kind !== 'glider') continue;
+        const y0 = Math.min(...points.map(([, y]) => y));
+        const y1 = Math.max(...points.map(([, y]) => y));
+        if (y0 <= cfg.garden.y1 && y1 >= cfg.garden.y0) continue;
+        const cy = (y0 + y1) / 2;
+        // Independently compare direct and seam routes to the vertical interval.
+        const direct = cy < cfg.garden.y0 ? cfg.garden.y0 - cy : cfg.garden.y1 - cy;
+        const seam = direct > 0 ? cfg.garden.y1 - cfg.height - cy : cfg.garden.y0 + cfg.height - cy;
+        const dy = wrapY && Math.abs(seam) < Math.abs(direct) ? seam : direct;
+        gliders++;
+        if (wrapY && Math.sign(dy) !== Math.sign(direct)) seamRoutes++;
+        if (match.heading[0] === (team === RED ? 1 : -1) && match.heading[1] === Math.sign(dy)) aimed++;
+      }
+      expect(gliders).toBeGreaterThan(100);
+      expect(aimed / gliders).toBeGreaterThan(0.75);
+      // Random orientations remain available instead of always forcing a heading.
+      expect(aimed / gliders).toBeLessThan(0.98);
+      if (wrapY) expect(seamRoutes).toBeGreaterThan(20);
+    }
+  });
+
+  it('wins at least 75% of 40 balanced matches against one star', () => {
+    const cfg = ARENA_PRESETS.small;
+    let wins = 0, draws = 0;
+    const times: number[] = [];
+    for (let seed = 0; seed < 20; seed++) for (const team of [RED, BLUE] as const) {
+      const start = performance.now();
+      const strong = chooseDeployment(cfg, team, 5, seed);
+      times.push(performance.now() - start);
+      const weak = chooseDeployment(cfg, team === RED ? BLUE : RED, 1, seed + 10_000);
+      const result = team === RED ? simulateBattle(cfg, strong, weak) : simulateBattle(cfg, weak, strong);
+      if (result.winner === (team === RED ? 'red' : 'blue')) wins++;
+      if (result.winner === 'draw') draws++;
+    }
+    times.sort((a, b) => a - b);
+    console.info(`Garden five-star vs one-star: ${wins}/40 wins, ${draws} draws (${100 * wins / 40}%); five-star median ${times[20].toFixed(2)} ms, max ${times[39].toFixed(2)} ms`);
+    expect(wins / 40).toBeGreaterThanOrEqual(0.75);
+  }, 60_000);
+
+  it('keeps large five-star search below 1.5 seconds', () => {
+    chooseDeployment(ARENA_PRESETS.large, RED, 2, 1234);
+    const times: number[] = [];
+    for (const team of [RED, BLUE] as const) for (const seed of [1001, 1002, 1003]) {
+      const start = performance.now();
+      const army = chooseDeployment(ARENA_PRESETS.large, team, 5, seed);
+      times.push(performance.now() - start);
+      expect(validateDeployment(ARENA_PRESETS.large, team, army).ok).toBe(true);
+    }
+    console.info('Garden large five-star elapsed ms:', times);
+    expect(Math.max(...times)).toBeLessThan(1500);
+  }, 30_000);
 });

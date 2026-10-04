@@ -1,6 +1,7 @@
 // Adapts the battle grid (dense, toroidal, two colours) to the renderer's
 // SimView, and keeps the birth/fade bookkeeping the animations need.
 
+import { type TeamCluster, findTeamClusters } from '../life/clusters';
 import { key, keyX, keyY } from '../life/engine';
 import type { Fading, SimView } from '../sim';
 import {
@@ -14,6 +15,7 @@ import {
   neighborCountsGrid,
   paintCells,
   population,
+  scoreOf,
   stepGrid,
   territory,
 } from './arena';
@@ -29,6 +31,9 @@ export class BattleSim implements SimView {
   version = 0;
   generation = 0;
   readonly organisms = false;
+  /** Set by BattleMode: show team creatures (reveal, battle, result) or cells (deploying). */
+  creatures = false;
+  private clusterCache: { version: number; clusters: TeamCluster[] } | null = null;
   grid: Grid;
   /** Territory: which team last stood on each square. */
   paint: Paint;
@@ -48,12 +53,25 @@ export class BattleSim implements SimView {
     return v === EMPTY ? undefined : (v as Team);
   }
 
+  teamClusters(): TeamCluster[] {
+    if (this.clusterCache?.version !== this.version) {
+      const { width, height, wrapX, wrapY } = this.cfg;
+      this.clusterCache = { version: this.version, clusters: findTeamClusters(this.grid, width, height, wrapX, wrapY) };
+    }
+    return this.clusterCache.clusters;
+  }
+
   get score() {
     return population(this.grid);
   }
 
   get territory() {
     return territory(this.paint);
+  }
+
+  /** What decides the winner: garden flowers, or whole-board territory under legacy rules. */
+  get points() {
+    return scoreOf(this.cfg, this.paint);
   }
 
   /** Replace the whole board (e.g. revealing armies). Every cell pops in. */

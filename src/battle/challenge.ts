@@ -1,9 +1,12 @@
 import { decodeRle, encodeRle } from '../share/rle';
-import { ARENA_PRESETS, ARENA_SIZES, type ArenaSize, BLUE, RED, validateDeployment } from './arena';
+import { ARENA_PRESETS, LEGACY_PRESETS, ARENA_SIZES, type ArenaSize, BLUE, RED, validateDeployment } from './arena';
 import type { ArenaConfig, Pt, Team } from './arena';
 
-export interface Challenge { army: Pt[]; name?: string; size?: ArenaSize }
-export interface Replay { red: Pt[]; blue: Pt[]; size?: ArenaSize }
+export type BattleRules = 'garden' | 'legacy';
+export interface Challenge { army: Pt[]; name?: string; size?: ArenaSize; rules?: BattleRules }
+export interface Replay { red: Pt[]; blue: Pt[]; size?: ArenaSize; rules?: BattleRules }
+export interface DecodedChallenge extends Challenge { rules: BattleRules }
+export interface DecodedReplay extends Replay { rules: BattleRules }
 
 function cleanName(name: string): string {
   return Array.from(name.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').trim()).slice(0, 24).join('').trim();
@@ -85,51 +88,53 @@ function parameters(hash: string, kind: 'c' | 'r'): URLSearchParams | null {
   for (const key of params.keys()) {
     if (!allowed.includes(key) || params.getAll(key).length !== 1) return null;
   }
-  return params.get(kind) === '1' ? params : null;
+  return params.get(kind) === '1' || params.get(kind) === '2' ? params : null;
 }
 
 export function toChallengeHash(challenge: Challenge): string {
-  const params = new URLSearchParams({ c: '1', a: encodeArmy(challenge.army) });
+  const params = new URLSearchParams({ c: challenge.rules === 'legacy' ? '1' : '2', a: encodeArmy(challenge.army) });
   if (challenge.size && challenge.size !== 'small') params.set('s', challenge.size);
   const name = challenge.name === undefined ? '' : cleanName(challenge.name);
   if (name) params.set('n', name);
   return `#${params.toString()}`;
 }
 
-export function fromChallengeHash(hash: string, cfgOverride?: ArenaConfig): Challenge | null {
+export function fromChallengeHash(hash: string, cfgOverride?: ArenaConfig): DecodedChallenge | null {
   try {
     const params = parameters(hash, 'c');
     if (!params) return null;
     const size = sizeParam(params);
     if (!size) return null;
-    const cfg = cfgOverride ?? ARENA_PRESETS[size];
+    const rules: BattleRules = params.get('c') === '1' ? 'legacy' : 'garden';
+    const cfg = cfgOverride ?? (rules === 'legacy' ? LEGACY_PRESETS : ARENA_PRESETS)[size];
     if (!validateDeployment(cfg, RED, []).ok) return null;
     const army = decodeArmy(params.get('a'), cfg, RED);
     if (!army) return null;
     const name = cleanName(params.get('n') ?? '');
-    return name ? { army, name, size } : { army, size };
+    return name ? { army, name, size, rules } : { army, size, rules };
   } catch {
     return null;
   }
 }
 
 export function toReplayHash(replay: Replay): string {
-  const params = new URLSearchParams({ r: '1', a: encodeArmy(replay.red), b: encodeArmy(replay.blue) });
+  const params = new URLSearchParams({ r: replay.rules === 'legacy' ? '1' : '2', a: encodeArmy(replay.red), b: encodeArmy(replay.blue) });
   if (replay.size && replay.size !== 'small') params.set('s', replay.size);
   return `#${params}`;
 }
 
-export function fromReplayHash(hash: string, cfgOverride?: ArenaConfig): Replay | null {
+export function fromReplayHash(hash: string, cfgOverride?: ArenaConfig): DecodedReplay | null {
   try {
     const params = parameters(hash, 'r');
     if (!params) return null;
     const size = sizeParam(params);
     if (!size) return null;
-    const cfg = cfgOverride ?? ARENA_PRESETS[size];
+    const rules: BattleRules = params.get('r') === '1' ? 'legacy' : 'garden';
+    const cfg = cfgOverride ?? (rules === 'legacy' ? LEGACY_PRESETS : ARENA_PRESETS)[size];
     if (!validateDeployment(cfg, RED, []).ok) return null;
     const red = decodeArmy(params.get('a'), cfg, RED);
     const blue = decodeArmy(params.get('b'), cfg, BLUE);
-    return red && blue ? { red, blue, size } : null;
+    return red && blue ? { red, blue, size, rules } : null;
   } catch {
     return null;
   }

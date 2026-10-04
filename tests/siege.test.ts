@@ -12,7 +12,8 @@ import { DEFAULT_RULES as rules, arenaConfig, initialState, observe, simulate, s
 import { BEST_ESCORT, BREACH_ESCORT, lateStreamComparison, LOWER_GUN, UPPER_EATER, UPPER_GUN, mirrorArmy, traceFixture } from '../src/battle/siege/experiments';
 const prefabs = loadPrefabs({gosperglidergun:gun,eater1:eater,lwss,glider,block,rpentomino});
 
-describe('Crystal Siege Phase 0 fixtures', () => {
+// Full 640-generation fixtures: fast locally, but CI runners can exceed vitest's 5 s default.
+describe('Crystal Siege Phase 0 fixtures', { timeout: 60_000 }, () => {
   it('uses the existing canonical catalogue seeds and charges actual live-cell counts', () => {
     expect(Object.values(prefabs).map(p=>p.cost)).toEqual([36,7,9,5,4,5]);
     for(const p of Object.values(prefabs)) {

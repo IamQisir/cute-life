@@ -1,5 +1,5 @@
 import { decodeRle, encodeRle } from '../share/rle';
-import { ARENA_PRESETS, LEGACY_PRESETS, ARENA_SIZES, type ArenaSize, BLUE, RED, validateDeployment } from './arena';
+import { ARENA_SIZES, type ArenaSize, BLUE, RED, presetFor, validateDeployment } from './arena';
 import type { ArenaConfig, Pt, Team } from './arena';
 
 export type BattleRules = 'garden' | 'legacy';
@@ -106,7 +106,8 @@ export function fromChallengeHash(hash: string, cfgOverride?: ArenaConfig): Deco
     const size = sizeParam(params);
     if (!size) return null;
     const rules: BattleRules = params.get('c') === '1' ? 'legacy' : 'garden';
-    const cfg = cfgOverride ?? (rules === 'legacy' ? LEGACY_PRESETS : ARENA_PRESETS)[size];
+    const cfg = cfgOverride ?? presetFor(rules, size);
+    if (!cfg) return null;
     if (!validateDeployment(cfg, RED, []).ok) return null;
     const army = decodeArmy(params.get('a'), cfg, RED);
     if (!army) return null;
@@ -130,7 +131,8 @@ export function fromReplayHash(hash: string, cfgOverride?: ArenaConfig): Decoded
     const size = sizeParam(params);
     if (!size) return null;
     const rules: BattleRules = params.get('r') === '1' ? 'legacy' : 'garden';
-    const cfg = cfgOverride ?? (rules === 'legacy' ? LEGACY_PRESETS : ARENA_PRESETS)[size];
+    const cfg = cfgOverride ?? presetFor(rules, size);
+    if (!cfg) return null;
     if (!validateDeployment(cfg, RED, []).ok) return null;
     const red = decodeArmy(params.get('a'), cfg, RED);
     const blue = decodeArmy(params.get('b'), cfg, BLUE);

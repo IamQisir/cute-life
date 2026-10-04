@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  ARENA_PRESETS, LEGACY_PRESETS, ARENA_SIZES, BLUE, DEFAULT_ARENA, EMPTY, RED, deployZone, emptyGrid, neighborCountsGrid,
+  ARENA_PRESETS, LEGACY_PRESETS, ARENA_SIZES, BLUE, DEFAULT_ARENA, presetFor, EMPTY, RED, deployZone, emptyGrid, neighborCountsGrid,
   paintCells, placeArmies, population, scoreOf, decideWinner, simulateBattle, stepGrid, territory, validateDeployment,
 } from '../src/battle/arena';
 import type { ArenaConfig, Grid, Pt, Team } from '../src/battle/arena';
@@ -536,6 +536,7 @@ describe('garden rules', () => {
       small: [28, 20, 20, 150, 3, 11, 16, 7, 12],
       medium: [40, 28, 32, 220, 4, 16, 23, 10, 17],
       large: [56, 40, 50, 300, 5, 23, 32, 15, 24],
+      xl: [80, 56, 100, 360, 6, 34, 45, 22, 33],
     };
     for (const size of ARENA_SIZES) {
       const cfg = ARENA_PRESETS[size];
@@ -547,6 +548,7 @@ describe('garden rules', () => {
       expect(garden.y0).toBeGreaterThanOrEqual(0);
       expect(garden.y1).toBeLessThan(cfg.height);
       expect(cfg).toMatchObject({ wrapX: false, wrapY: true, endOnExtinction: true });
+      if (size === 'xl') continue; // xl only exists under the garden rules
       expect(LEGACY_PRESETS[size]).toMatchObject({ buffer: 1 });
       expect(LEGACY_PRESETS[size].garden).toBeUndefined();
     }
@@ -611,7 +613,8 @@ describe('versioned battle links', () => {
 
   it('round-trips both versions for every size and preserves the legacy replay winner', () => {
     for (const size of ARENA_SIZES) for (const rules of ['garden', 'legacy'] as const) {
-      const cfg = (rules === 'legacy' ? LEGACY_PRESETS : ARENA_PRESETS)[size];
+      const cfg = presetFor(rules, size);
+      if (!cfg) continue; // legacy xl never existed
       const red: Pt[] = [[3, 4], [4, 4], [5, 4]];
       const x = deployZone(cfg, BLUE).x0 + 1;
       const blue: Pt[] = [[x, 1], [x + 1, 1], [x, 2], [x + 1, 2]];
@@ -621,7 +624,7 @@ describe('versioned battle links', () => {
       expect(hash.startsWith(`#r=${rules === 'legacy' ? 1 : 2}&`)).toBe(true);
       const replay = fromReplayHash(hash)!;
       expect(replay).toEqual({ red, blue, size, rules });
-      const replayCfg = (replay.rules === 'legacy' ? LEGACY_PRESETS : ARENA_PRESETS)[replay.size!];
+      const replayCfg = presetFor(replay.rules!, replay.size!)!;
       expect(simulateBattle(replayCfg, replay.red, replay.blue)).toEqual(simulateBattle(cfg, red, blue));
       expect(simulateBattle(replayCfg, replay.red, replay.blue).winner).toBe(rules === 'legacy' ? 'red' : 'draw');
       expect(fromReplayHash(hash.replace(/r=[12]/, 'r=3'))).toBeNull();
@@ -689,4 +692,22 @@ describe('garden AI strength and timing', () => {
     console.info('Garden large five-star elapsed ms:', times);
     expect(Math.max(...times)).toBeLessThan(1500 * SLOW);
   }, 30_000);
+});
+
+describe('xl arena', () => {
+  it('fits a Gosper gun turned upright in each deployment zone', () => {
+    const cfg = ARENA_PRESETS.xl;
+    for (const team of [RED, BLUE] as const) {
+      const z = deployZone(cfg, team);
+      expect(z.x1 - z.x0 + 1).toBeGreaterThanOrEqual(9);
+      expect(z.y1 - z.y0 + 1).toBeGreaterThanOrEqual(36);
+      expect(z.x1 - z.x0 + 1).toBeGreaterThanOrEqual(34);
+    }
+  });
+
+  it('rejects legacy (v1) links that claim the xl size', () => {
+    const v2 = toChallengeHash({ army: [[3, 4], [4, 4], [5, 4]], size: 'xl', rules: 'garden' });
+    expect(fromChallengeHash(v2)?.size).toBe('xl');
+    expect(fromChallengeHash(v2.replace('c=2', 'c=1'))).toBeNull();
+  });
 });

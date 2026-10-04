@@ -17,10 +17,11 @@ export interface ArenaConfig {
 }
 
 /** Arena sizes players can pick. */
-export type ArenaSize = 'small' | 'medium' | 'large';
-export const ARENA_SIZES: ArenaSize[] = ['small', 'medium', 'large'];
-/** Original territory rules, retained for version-1 links. */
-export const LEGACY_PRESETS: Record<ArenaSize, ArenaConfig> = {
+export type ArenaSize = 'small' | 'medium' | 'large' | 'xl';
+export const ARENA_SIZES: ArenaSize[] = ['small', 'medium', 'large', 'xl'];
+type LegacySize = Exclude<ArenaSize, 'xl'>;
+/** Original territory rules, retained for version-1 links (there was no xl then). */
+export const LEGACY_PRESETS: Record<LegacySize, ArenaConfig> = {
   small: { width: 28, height: 20, budget: 20, generations: 150, buffer: 1, wrapX: false, wrapY: true },
   medium: { width: 40, height: 28, budget: 32, generations: 220, buffer: 1, wrapX: false, wrapY: true },
   large: { width: 56, height: 40, budget: 50, generations: 300, buffer: 1, wrapX: false, wrapY: true },
@@ -32,7 +33,17 @@ export const ARENA_PRESETS: Record<ArenaSize, ArenaConfig> = {
     garden: { x0: 16, x1: 23, y0: 10, y1: 17 } },
   large: { ...LEGACY_PRESETS.large, buffer: 5, endOnExtinction: true,
     garden: { x0: 23, x1: 32, y0: 15, y1: 24 } },
+  // The current battle arena: room for big structures (a Gosper gun is 36x9).
+  // Zones: red x 0..33, blue x 46..79; the 12x12 garden fills the gap.
+  xl: { width: 80, height: 56, budget: 100, generations: 360, buffer: 6, wrapX: false, wrapY: true,
+    endOnExtinction: true, garden: { x0: 34, x1: 45, y0: 22, y1: 33 } },
 };
+
+/** The preset for a link's rules + size, or null if that combination never existed. */
+export function presetFor(rules: 'garden' | 'legacy', size: ArenaSize): ArenaConfig | null {
+  if (rules === 'garden') return ARENA_PRESETS[size];
+  return size === 'xl' ? null : LEGACY_PRESETS[size];
+}
 export const DEFAULT_ARENA = ARENA_PRESETS.small;
 export type Grid = Uint8Array;
 export type Paint = Uint8Array;

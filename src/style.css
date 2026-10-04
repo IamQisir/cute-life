@@ -232,7 +232,8 @@ html, body {
 .modal-note { font-size: 18px; color: var(--ink-soft); text-align: center; }
 
 /* ---- battle ---------------------------------------------------------- */
-#hud.battle .palette, #hud.battle .bottom, #hud.battle .hint, #hud.battle .sleeper { display: none; }
+/* The battle reuses the sandbox palette; sandbox-only controls hide. */
+#hud.battle .bottom, #hud.battle .hint, #hud.battle .sleeper, #hud.battle .sandbox-only { display: none; }
 /* #hud > .battle-hud beats the generic `#hud > *` rule, so clicks reach the canvas. */
 #hud > .battle-hud { position: absolute; inset: 0; pointer-events: none; }
 .battle-hud > * { pointer-events: auto; }
@@ -276,8 +277,8 @@ html, body {
 .score-bar .red { height: 100%; background: #ec8f7b; transition: width 0.2s ease; }
 .score-gen { font-size: 15px; color: var(--ink-soft); }
 
-/* Wide: palette left, controls right, vertically centred. */
-.battle-palette, .battle-side {
+/* Wide: controls on the right, vertically centred (the shared palette is on the left). */
+.battle-side {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
@@ -288,9 +289,8 @@ html, body {
   overflow-y: auto;
   padding: 4px;
 }
-.battle-palette { left: 14px; }
 .battle-side { right: 14px; width: 200px; gap: 14px; }
-.battle-palette .label, .side-group .label {
+.side-group .label {
   font-family: 'Caveat', cursive;
   font-size: 22px;
   color: var(--ink-soft);
@@ -302,10 +302,6 @@ html, body {
 .side-group .speed { justify-content: center; }
 .card .cost { font-size: 14px; color: var(--ink-soft); }
 .side-hint { font-size: 15px; color: var(--ink-soft); text-align: center; }
-/* Smaller cards so the whole battle palette fits without scrolling. */
-.battle-palette .card { width: 76px; padding: 3px 2px 1px; }
-.battle-palette .card canvas { width: 46px !important; height: 46px !important; }
-.battle-palette .card div { font-size: 15px; line-height: 1.1; }
 .card.off { opacity: 0.35; pointer-events: none; }
 .card.dragging { opacity: 0.5; }
 .stars { font-size: 28px; cursor: pointer; letter-spacing: 2px; color: #d8cdbd; user-select: none; text-align: center; }
@@ -324,7 +320,7 @@ html, body {
 
 /* Narrow: palette strip and controls stacked at the bottom. */
 @media (max-width: 899px) {
-  .battle-palette, .battle-side {
+  .battle-side {
     top: auto;
     transform: none;
     left: 0;
@@ -333,11 +329,8 @@ html, body {
     max-height: none;
   }
   .battle-side { bottom: 8px; flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 0 8px; }
-  .battle-palette { bottom: 128px; flex-direction: row; overflow-x: auto; padding: 4px 10px; }
-  .battle-palette .label, .side-group .label { display: none; }
-  .palette, .battle-palette { display: flex; }
-  .battle-palette .card { flex: 0 0 auto; width: 62px; padding: 4px 2px 0; }
-  .battle-palette .card canvas { width: 40px !important; height: 40px !important; }
+  .side-group .label { display: none; }
+  .palette { display: flex; }
   .side-group { flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; }
   .side-group .btn { font-size: 16px; }
   .side-group .btn.big { font-size: 20px; }
@@ -377,7 +370,7 @@ html, body {
 }
 
 /* ---- palette sections ------------------------------------------------- */
-.palette { display: flex !important; flex-direction: column; gap: 6px; width: 196px; }
+.palette { display: flex; flex-direction: column; gap: 6px; width: 196px; }
 .pal-top {
   display: flex;
   align-items: center;
@@ -435,11 +428,7 @@ html, body {
 .selection-menu .btn.big { font-size: 20px; }
 .selection-count { font-size: 15px; color: var(--ink-soft); }
 .custom-area { display: contents; }
-/* Two columns so built-in and custom stamps fit without scrolling. */
-.battle-palette { display: grid; align-content: start; }
-.battle-palette { grid-template-columns: repeat(2, 76px); }
-.battle-palette .label { grid-column: 1 / -1; }
-.palette .card, .battle-palette .card { transform: none; }
+.palette .card { transform: none; }
 .card { position: relative; }
 .card-tools {
   position: absolute;
@@ -506,7 +495,7 @@ html, body {
     padding: 4px 12px;
   }
   .palette .label { display: none; }
-  .palette { flex-direction: row !important; width: auto; align-items: center; }
+  .palette { flex-direction: row; width: auto; align-items: center; }
   .pal-top { display: none; }
   .pal-section { flex-direction: row; align-items: center; flex: 0 0 auto; }
   .pal-header { border-bottom: none; white-space: nowrap; font-size: 15px; }

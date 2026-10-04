@@ -199,8 +199,7 @@ async function main() {
   function selectPattern(p: Pattern | null) {
     if (p !== pattern) rotation = 0;
     pattern = p;
-    hud.setPattern(mode === 'sandbox' ? p : null);
-    battleHud.setPicked(mode === 'battle' ? p : null);
+    hud.setPattern(p);
   }
 
   /** Drop the current stamp at a cell, in whichever mode is active. */
@@ -372,6 +371,7 @@ async function main() {
   const battle = new BattleMode({
     changed() {
       battleHud.render(battle);
+      syncPalette();
       // Panels change with the phase, so the free space for the arena does too.
       if (battle.phase !== 'deploy' && pattern) selectPattern(null);
       if (mode === 'battle' && battle.phase !== framedPhase) fitArena();
@@ -416,9 +416,15 @@ async function main() {
     togglePause: () => battle.togglePause(),
     finishNow: () => battle.finishNow(performance.now()),
     setSpeed: (v) => (battle.genPerSec = v),
-    cards: cardDrag,
-  });
+  }, hud.palette);
   battleHud.show(false);
+
+  /** The shared palette: budget-greyed and only active while deploying in a battle. */
+  function syncPalette() {
+    const deploying = mode === 'battle' && battle.phase === 'deploy';
+    hud.setBudget(deploying ? battle.budgetLeft : null);
+    hud.setPaletteActive(mode === 'sandbox' || deploying);
+  }
 
   function resultText(): string {
     const o = battle.outcome;
@@ -468,6 +474,7 @@ async function main() {
   function exitBattle() {
     selectPattern(null);
     mode = 'sandbox';
+    syncPalette();
     hud.setMode('sandbox');
     battleHud.show(false);
     hud.closeResult();
@@ -545,8 +552,7 @@ async function main() {
       },
       importStamp: () => openImportDialog(importStamp),
     });
-    battleHud.setStamps(entries);
-    if (mode === 'battle') battleHud.render(battle);
+    syncPalette();
   }
 
   /** Add a stamp and report what happened. Returns an error message, or null. */

@@ -1,0 +1,11 @@
+// Cloudflare Workers config. The site is fully static: Cloudflare serves the
+// Vite build output in dist/ and runs no server code.
+{
+  "name": "cute-life",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist"
+  },
+  // Required by `wrangler preview`, which Cloudflare runs for non-main branches.
+  "previews": {}
+}

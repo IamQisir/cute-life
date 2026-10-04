@@ -1,7 +1,8 @@
 import { buds, neighborCounts, type Cells } from '../life/engine';
 import type { Camera } from '../render/camera';
 import type { Sim } from '../sim';
-import { WELCOME_GEN_PER_SEC, WELCOME_PRE_ADVANCE } from './welcomeScene';
+// Bookkeeping for the compact title scene; keep heavy scene construction out of runtime.
+const WELCOME_PRE_ADVANCE = 120, WELCOME_GEN_PER_SEC = 12;
 
 export interface WelcomeHost {
   sim: Sim;

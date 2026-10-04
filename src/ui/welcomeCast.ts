@@ -3,7 +3,7 @@ import { Camera } from '../render/camera';
 import { drawBud, drawCell, PALETTES } from '../render/cellArt';
 import { OrganismView } from '../render/organisms';
 import { Sim } from '../sim';
-import { welcomePattern } from './welcomeScene';
+import { welcomePattern } from './welcomePatterns';
 
 export const WELCOME_MOODS = [
   { mood: 'happy', label: 'lives on', rule: '2 or 3 ~ lives on' },

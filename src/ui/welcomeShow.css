@@ -136,3 +136,12 @@
   .welcome-begin { font-size: 28px; padding: 10px 24px; }
   .welcome-gated .welcome-skip { font-size: 16px; }
 }
+
+.welcome-video, .welcome-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #f2ece0; }
+.welcome-video { transition: opacity 240ms ease; }
+.welcome-video[hidden] { display: none; }
+.welcome-video-finished { opacity: 0; pointer-events: none; }
+.welcome-playing .welcome-note { top: auto; bottom: 16px; left: 16px; transform: none; width: auto; padding: 0; background: transparent; border: 0; box-shadow: none; }
+.welcome-playing .welcome-skip { background: #fff6c9ed; }
+@media (prefers-reduced-motion: reduce) { .welcome-video { transition: none; } }
+.welcome-video-description { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

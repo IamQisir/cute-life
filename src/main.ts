@@ -921,7 +921,13 @@ async function main() {
   if (params.has('sprinkle')) shuffle();
   if (params.has('play')) setPlaying(true);
 
-  onboarding.start(Boolean(shared || offered || challenge || replayLink));
+  if (params.has('render-intro')) {
+    const { mountIntroExporter } = await import('./ui/welcomeExporter');
+    mountIntroExporter(app, {
+      sim, cam, playing: () => playing, following: () => following,
+      setPlaying, setFollowing, refreshStatus,
+    }, { stage: app.stage, renderer: app.renderer, view, audio, soundChanged: () => hud.setSound(audio.mode) });
+  } else onboarding.start(Boolean(shared || offered || challenge || replayLink));
 
   // Handy for debugging and for future screenshot tooling.
   Object.assign(window, { cuteLife: { sim, cam, togglePlay, stepOnce, battle, enterBattle } });

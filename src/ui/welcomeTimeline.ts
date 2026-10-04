@@ -29,9 +29,7 @@ export function welcomeWideZoom(width: number, height: number) {
   // Fill either aspect ratio with the cross-shaped field while retaining the 260-cell title.
   return Math.max(0.45, Math.min(width / 280, Math.max(width / WELCOME_WORLD.width, height / 640)));
 }
-export function welcomeTitleCamera(seconds: number) {
-  return { x: -12 + Math.sin(seconds * 0.08) * 14, y: Math.sin(seconds * 0.11) * 8, zoom: 7 };
-}
+export { welcomeTitleCamera } from './welcomeTitleScene';
 /** Slow the close-up to four generations/sec so moods and births can be read. */
 export function welcomeGeneration(seconds: number) {
   const t = Math.max(0, Math.min(WELCOME_SECONDS, seconds));

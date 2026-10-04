@@ -97,7 +97,7 @@ export class Onboarding {
     actions.append(tour, button('watch the intro again', () => {
       this.unmount();
       // Keep replay and its optional tour/rules from changing first-visit flags.
-      this.welcome.start((tour) => { if (tour) this.openTour(true, false); });
+      this.welcome.start((tour) => { if (tour) this.openTour(true, false); }, true);
     }), button('back to my world', () => this.unmount()));
     this.note.replaceChildren(this.heading('a little help ~'), actions);
     tour.focus();

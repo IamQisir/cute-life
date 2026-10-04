@@ -25,17 +25,20 @@ export const SCORE_CHORDS = [
 export function welcomeScore(seconds: number) {
   return {
     chord: seconds < 6 ? 0 : seconds < 8 ? 1 : seconds < 10.5 ? 2 : seconds < 13.5 ? 3 : 4,
-    beat: seconds >= 2.5 && seconds < 13.5 ? Math.floor((seconds - 2.5) / 0.6) : -1,
+    beat: seconds >= 2.5 && seconds < 13.5 ? Math.floor((seconds - 2.5 + 1e-9) / 0.6) : -1,
     births: seconds >= 10.5 && seconds < 13.5,
   };
 }
+
+type WelcomeLease = { context: BaseAudioContext; output: AudioNode; release(): void };
+export interface OfflineWelcomeClock { lease: WelcomeLease; time: number }
 
 type Source = OscillatorNode | AudioBufferSourceNode;
 type Voice = { sources: Source[]; nodes: AudioNode[]; end: number };
 
 /** All intro sources and routing nodes belong to this bus, including bell tails. */
 export class WelcomeSound {
-  private lease: ReturnType<MusicBox['beginWelcome']>;
+  private lease: WelcomeLease | null;
   private bus: GainNode | null = null;
   private music: GainNode | null = null;
   private effects: GainNode | null = null;
@@ -48,8 +51,8 @@ export class WelcomeSound {
   private finished = false;
   private tailTimer = 0;
 
-  constructor(private audio: MusicBox, private reduced: boolean) {
-    this.lease = audio.beginWelcome();
+  constructor(private audio: Pick<MusicBox, 'mode' | 'beginWelcome'>, private reduced: boolean, private offline?: OfflineWelcomeClock) {
+    this.lease = offline?.lease ?? audio.beginWelcome();
     if (!this.lease) return;
     const ctx = this.lease.context;
     this.bus = ctx.createGain();
@@ -63,20 +66,23 @@ export class WelcomeSound {
     if (!reduced) this.drone([130.81, 164.81, 196], 2.5);
   }
 
+  private time() { return this.offline?.time ?? this.lease?.context.currentTime ?? 0; }
+
   syncMode() {
     if (!this.lease) return;
-    const t = this.lease.context.currentTime;
+    const t = this.time();
     const layers = welcomeLayers(this.audio.mode);
     this.music?.gain.setTargetAtTime(layers.notes ? 1 : 0, t, 0.025);
     this.effects?.gain.setTargetAtTime(layers.sfx ? 1 : 0, t, 0.025);
   }
 
   private retain(sources: Source[], nodes: AudioNode[], duration: number) {
-    this.voices.push({ sources, nodes, end: this.lease!.context.currentTime + duration });
+    this.voices.push({ sources, nodes, end: this.time() + duration });
   }
 
   private clearVoices(all = false) {
-    const now = this.lease?.context.currentTime ?? 0;
+    if (this.offline && !all) return;
+    const now = this.time();
     this.voices = this.voices.filter((voice) => {
       if (!all && voice.end > now) return true;
       for (const source of voice.sources) { try { source.stop(); } catch { /* Already stopped. */ } }
@@ -86,7 +92,7 @@ export class WelcomeSound {
   }
 
   private drone(chord: readonly number[], duration: number, swell = false) {
-    const ctx = this.lease!.context, t = ctx.currentTime;
+    const ctx = this.lease!.context, t = this.time();
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass'; filter.frequency.value = 580;
     if (this.pad) {
@@ -107,7 +113,7 @@ export class WelcomeSound {
   }
 
   private bell(frequency: number, gain: number, output = this.music!, duration = 1.6) {
-    const ctx = this.lease!.context, t = ctx.currentTime;
+    const ctx = this.lease!.context, t = this.time();
     const env = ctx.createGain();
     env.gain.setValueAtTime(0, t); env.gain.linearRampToValueAtTime(gain, t + 0.008);
     env.gain.exponentialRampToValueAtTime(0.0001, t + duration);
@@ -124,10 +130,15 @@ export class WelcomeSound {
   }
 
   private whoosh(duration: number) {
-    const ctx = this.lease!.context, t = ctx.currentTime;
+    const ctx = this.lease!.context, t = this.time();
     const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * duration), ctx.sampleRate);
     const data = buffer.getChannelData(0);
-    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    // Seeded noise keeps offline and live synthesis reproducible.
+    let seed = 0x12345678;
+    for (let i = 0; i < data.length; i++) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      data[i] = seed / 2147483648 - 1;
+    }
     const noise = ctx.createBufferSource(), pitch = ctx.createOscillator();
     noise.buffer = buffer;
     const filter = ctx.createBiquadFilter(), env = ctx.createGain(), pitchGain = ctx.createGain();
@@ -143,7 +154,7 @@ export class WelcomeSound {
   }
 
   private pulse() {
-    const ctx = this.lease!.context, t = ctx.currentTime;
+    const ctx = this.lease!.context, t = this.time();
     const oscillator = ctx.createOscillator(), env = ctx.createGain();
     oscillator.frequency.setValueAtTime(92, t);
     oscillator.frequency.exponentialRampToValueAtTime(38, t + 0.16);
@@ -156,6 +167,7 @@ export class WelcomeSound {
 
   update(seconds: number, generation: number, births: number[], gunCount: number = SHOWCASE_GUNS.length) {
     if (!this.lease || this.finished || this.reduced) return;
+    if (this.offline) this.offline.time = seconds;
     this.clearVoices();
     this.syncMode();
     const layers = welcomeLayers(this.audio.mode);
@@ -175,7 +187,7 @@ export class WelcomeSound {
     if (this.previousTime < 15.4 && seconds >= 15.4) {
       [523.25, 659.25, 783.99].forEach((frequency) => this.bell(frequency, 0.04));
     }
-    if (seconds >= WELCOME_ZOOM_END && seconds < WELCOME_FINALE && seconds >= this.nextNote && births.length && layers.notes) {
+    if (seconds >= WELCOME_ZOOM_END && seconds < WELCOME_FINALE && seconds + 1e-9 >= this.nextNote && births.length && layers.notes) {
       const key = births[generation % births.length];
       this.bell(noteFor(keyX(key), keyY(key)), 0.075);
       this.nextNote = seconds + 0.3;

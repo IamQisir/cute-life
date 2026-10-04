@@ -1,6 +1,6 @@
-import { CATALOG } from '../life/catalog';
 import { fromList, step, toList, type Cells } from '../life/engine';
-import { placePattern } from '../life/patterns';
+import { welcomePattern } from './welcomePatterns';
+export { welcomePattern } from './welcomePatterns';
 
 export const WELCOME_CELL_CAP = 12000;
 export const WELCOME_SMALL_CAP = 5000;
@@ -38,11 +38,6 @@ export const SHOWCASE_STAMPS: readonly [string, number, number][] = [
   ]),
 ];
 
-export function welcomePattern(id: string, x: number, y: number): [number, number][] {
-  const pattern = CATALOG.find((entry) => entry.id === id);
-  if (!pattern) throw new Error(`Missing showcase pattern: ${id}`);
-  return placePattern(pattern, x, y);
-}
 
 const LETTERS: Record<string, string[]> = {
   c: ['01110', '10001', '10000', '10000', '10000', '10001', '01110'],
@@ -123,12 +118,4 @@ export function buildWelcomeScene(small = false): Cells {
   return cells;
 }
 
-/** A separate, compact live menu tableau: the real renderer draws its creatures. */
-export function buildTitleScene(): Cells {
-  return fromList([
-    ...welcomePattern('pulsar', -48, -25), ...welcomePattern('pulsar', 48, 25),
-    ...welcomePattern('pentadecathlon', -40, 30),
-    ...['lwss', 'mwss', 'hwss'].flatMap((id, i) => welcomePattern(id, 35 + i * 20, -20 + i * 20)),
-    ...welcomePattern('glider', -10, -35), ...welcomePattern('glider', 10, 35),
-  ]);
-}
+export { buildTitleScene } from './welcomeTitleScene';

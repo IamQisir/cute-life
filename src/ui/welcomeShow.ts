@@ -1,20 +1,14 @@
 import type { Container, Renderer } from 'pixi.js';
 import { MusicBox } from '../audio/musicBox';
-import { WelcomeSound } from '../audio/welcomeSound';
 import type { WorldView } from '../render/world';
-import { buds, neighborCounts, step, fromList, type Cells } from '../life/engine';
+import { buds, neighborCounts, type Cells } from '../life/engine';
 import { welcomeCreature, welcomeFace, WELCOME_MOODS } from './welcomeCast';
-import { WelcomeParticles } from './welcomeParticles';
 import { WELCOME_CARD, WELCOME_LINES } from './onboardingText';
 import { soundState } from './toolbar';
 import { icon } from './icons';
 import { borrowSandbox, type WelcomeHost } from './welcomeSandbox';
-import { WelcomeLens } from './welcomeLens';
-import { buildTitleScene, buildWelcomeScene, welcomePattern, WELCOME_GENESIS, WELCOME_PRE_ADVANCE, WELCOME_GEN_PER_SEC } from './welcomeScene';
-import { welcomeBeat, welcomeCamera, welcomeLensTimeline, welcomeUsesDive, WELCOME_SECONDS, WELCOME_ZOOM_END, WELCOME_SHOTS, welcomeTitleCamera, welcomeGeneration, type WelcomeTransition } from './welcomeTimeline';
-import { WelcomeBake } from './welcomeBakeClient';
-import { applyBakedFrame } from './welcomeBake';
-import { WelcomeQuality } from './welcomeQuality';
+import { buildTitleScene, welcomeTitleCamera } from './welcomeTitleScene';
+import { introSource, introState } from './welcomeVideo';
 import { perf } from '../render/perf';
 import './welcomeShow.css';
 
@@ -38,29 +32,19 @@ export class WelcomeShow {
   private overlay: HTMLElement | null = null;
   private note = node('section', 'welcome-note');
   private speaker = node('button', 'btn welcome-speaker');
-  private speedLines = node('div', 'welcome-speed');
-  private flash = node('div', 'welcome-flash');
-  private startAt = 0;
   private gateAt = 0;
   private gateSteps = 0;
-  private genesisInserted = 0;
-  private small = false;
-  private particles: WelcomeParticles | null = null;
-  private steps = 0;
-  private beat = -1;
   private gated = true;
   private final = false;
   private closing = false;
   private reduced = false;
-  private transition: WelcomeTransition = 'lens';
-  private lens: WelcomeLens | null = null;
-  private sound: WelcomeSound | null = null;
-  private lastFrame = 0;
-  private bake: WelcomeBake | null = null;
-  private quality = new WelcomeQuality((message) => perf.log(message));
+  private video: HTMLVideoElement | null = null;
+  private poster: HTMLImageElement | null = null;
+  private bufferTimer = 0;
+  private failureTimer = 0;
+  private lease: ReturnType<MusicBox['beginWelcome']> = null;
   private savedBitmap = false;
   private savedVisibleOrganisms = false;
-  private previousSeconds = 0;
   private frozenAt = 0;
   private restore: (() => void) | null = null;
   private done: (tour: boolean) => void = () => {};
@@ -74,23 +58,9 @@ export class WelcomeShow {
       if (this.closing) return;
       this.presentation.audio.cycleMode();
       this.presentation.soundChanged();
-      this.sound?.syncMode();
+      if (this.video) this.video.muted = this.presentation.audio.mode === 'off';
       this.renderSpeaker();
     });
-    this.speedLines.setAttribute('aria-hidden', 'true');
-    this.flash.setAttribute('aria-hidden', 'true');
-    const ns = 'http://www.w3.org/2000/svg';
-    const rays = document.createElementNS(ns, 'svg');
-    rays.setAttribute('viewBox', '0 0 1000 1000');
-    rays.setAttribute('preserveAspectRatio', 'none');
-    for (let i = 0; i < 24; i++) {
-      const angle = i / 24 * Math.PI * 2;
-      const path = document.createElementNS(ns, 'path');
-      const inner = 260 + (i % 4) * 35;
-      path.setAttribute('d', `M ${500 + Math.cos(angle) * inner} ${500 + Math.sin(angle) * inner} Q ${500 + Math.cos(angle + 0.006) * 550} ${500 + Math.sin(angle + 0.006) * 550} ${500 + Math.cos(angle) * 850} ${500 + Math.sin(angle) * 850}`);
-      rays.append(path);
-    }
-    this.speedLines.append(rays);
     document.addEventListener('keydown', (event) => {
       if (!this.active) return;
       this.blockedKeys.add(event.code);
@@ -126,18 +96,12 @@ export class WelcomeShow {
   /** Only reduced motion and the choice card freeze the live renderer. */
   renderTime(now: number) { return this.reduced || this.final || this.closing ? this.frozenAt : now; }
 
-  start(done: (tour: boolean) => void) {
+  start(done: (tour: boolean) => void, replay = false) {
     if (this.active) return;
     this.done = done;
     this.final = this.closing = false;
     this.gated = true;
-    this.steps = this.previousSeconds = 0;
-    this.quality = new WelcomeQuality((message) => perf.log(message));
-    this.beat = -1;
     this.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    this.transition = welcomeUsesDive(this.host.cam.w, this.host.cam.h, matchMedia('(pointer: coarse)').matches) ? 'dive' : 'lens';
-    this.small = this.transition === 'dive';
-    this.bake = new WelcomeBake(this.small, (message) => perf.log(message));
     this.savedBitmap = this.presentation.view.dotBitmapEnabled;
     this.presentation.view.dotBitmapEnabled = true;
     this.savedVisibleOrganisms = this.presentation.view.visibleOrganismsOnly;
@@ -158,7 +122,7 @@ export class WelcomeShow {
     this.overlay.setAttribute('aria-modal', 'true');
     this.overlay.setAttribute('aria-labelledby', 'welcome-title');
     this.overlay.setAttribute('aria-describedby', 'welcome-copy');
-    this.overlay.append(this.speedLines, this.flash, this.note, this.speaker);
+    this.overlay.append(this.note, this.speaker);
     this.renderSpeaker();
     this.overlay.addEventListener('pointerdown', (event) => event.stopPropagation());
     this.overlay.addEventListener('click', (event) => {
@@ -170,7 +134,25 @@ export class WelcomeShow {
       if (!this.note.contains(event.target as Node)) event.preventDefault();
     }, { passive: false });
     document.body.append(this.overlay);
+    const source = introSource(this.host.cam.w, this.host.cam.h, import.meta.env.BASE_URL);
+    if (!this.reduced) {
+      this.video = node('video', 'welcome-video');
+      this.video.src = source.video;
+      this.video.poster = source.poster;
+      this.video.preload = 'metadata';
+      this.video.playsInline = true;
+      this.video.setAttribute('playsinline', '');
+      this.video.hidden = true;
+      const video = this.video;
+      video.addEventListener('ended', () => { if (this.video === video) this.finish(); });
+      video.addEventListener('playing', () => { if (this.video === video) clearTimeout(this.failureTimer); });
+      video.addEventListener('waiting', () => { if (this.video === video && !this.gated && !this.final) this.watchFailure(); });
+      video.addEventListener('error', () => { if (this.video === video && !this.gated) this.fail('load/decode error'); });
+      this.overlay.prepend(this.video);
+      this.bufferTimer = window.setTimeout(() => this.buffer(), 1000);
+    }
     this.renderGate();
+    if (replay) this.begin();
   }
 
   private renderGate() {
@@ -212,43 +194,55 @@ export class WelcomeShow {
     const skip = this.action('skip', () => this.finish(), 'welcome-skip');
     this.note.replaceChildren(creatures, heading, subtitle, play, cast, begin, copy, skip);
     begin.focus({ preventScroll: true });
+    begin.addEventListener('pointerenter', () => this.buffer());
+    begin.addEventListener('focus', () => this.buffer());
+  }
+
+  private buffer() {
+    if (this.video && this.video.preload !== 'auto') this.video.preload = 'auto';
+  }
+
+  private watchFailure() {
+    clearTimeout(this.failureTimer);
+    this.failureTimer = window.setTimeout(() => this.fail('no playback within 3s'), 3000);
+  }
+
+  private fail(reason: string) {
+    if (this.final || this.closing) return;
+    perf.log(`intro video: ${reason}; choice card`);
+    if (introState(this.reduced, 'failure') === 'choice') this.finish();
   }
 
   private begin() {
     if (!this.gated || this.closing) return;
-    // Build a missing initial snapshot synchronously, before starting the 16s clock.
-    // Sound still unlocks in the original user-gesture stack (including Safari).
-    this.selectScene(this.small, 0, performance.now());
-    this.sound = new WelcomeSound(this.presentation.audio, this.reduced);
     this.gated = false;
+    clearTimeout(this.bufferTimer);
     this.overlay?.classList.remove('welcome-gated');
-    this.startAt = this.lastFrame = this.frozenAt = performance.now();
-    this.steps = this.genesisInserted = 0;
-    if (!this.reduced) this.particles = new WelcomeParticles(this.presentation.stage);
-    if (this.reduced) {
-      Object.assign(this.host.cam, welcomeCamera(WELCOME_SECONDS, this.host.cam.w, this.host.cam.h));
+    if (introState(this.reduced, 'begin') === 'poster') {
       this.finish();
-    } else this.update(this.startAt);
-  }
-
-  private selectScene(small: boolean, generation: number, now: number) {
-    this.small = small;
-    this.host.sim.animMs = 900 / WELCOME_GEN_PER_SEC;
-    const baked = this.bake?.get(small, generation);
-    if (baked) {
-      applyBakedFrame(this.host.sim, baked, now, true);
-    } else {
-      // Begin never waits: without a ready snapshot use the original deterministic live path.
-      let cells = buildWelcomeScene(small);
-      if (generation) {
-        cells = new Set([...cells, ...fromList(welcomePattern('rpentomino', WELCOME_GENESIS.x, WELCOME_GENESIS.y))]);
-        for (let i = 0; i < generation; i++) cells = step(cells);
-      }
-      this.setScene(cells);
-      this.host.sim.generation = WELCOME_PRE_ADVANCE + generation;
-      perf.log(`live fallback: ${small ? 'small' : 'full'} frame ${generation}`);
+      return;
     }
-    this.steps = generation;
+    const source = introSource(this.host.cam.w, this.host.cam.h, import.meta.env.BASE_URL);
+    if (!this.video!.src.endsWith(source.video)) { this.video!.src = source.video; this.video!.poster = source.poster; }
+    try { this.lease = this.presentation.audio.beginWelcome(); } catch { this.lease = null; }
+    this.buffer();
+    const video = this.video!;
+    // The video contains one mixed track: both music and all enable that track.
+    video.muted = this.presentation.audio.mode === 'off';
+    video.hidden = false;
+    this.overlay?.classList.add('welcome-playing');
+    const skip = this.action(WELCOME_CARD.skip, () => this.finish(), 'welcome-skip');
+    const caption = node('h2', 'welcome-video-description', 'welcome to cute life ~');
+    caption.id = 'welcome-title';
+    const description = node('p', 'welcome-video-description', 'a tiny world where cells are born, live and dance');
+    description.id = 'welcome-copy';
+    this.note.replaceChildren(caption, description, skip);
+    skip.focus({ preventScroll: true });
+    this.watchFailure();
+    try {
+      if (video.error) this.fail('load/decode error');
+      else void video.play().catch((error: unknown) => this.video === video && this.fail(`play rejected: ${String(error)}`));
+    } catch (error) { this.fail(`play failed: ${String(error)}`); }
   }
 
   private setScene(cells: Cells) {
@@ -257,8 +251,8 @@ export class WelcomeShow {
     sim.counts = neighborCounts(sim.cells);
     sim.budKeys = buds(sim.cells, sim.counts);
     sim.bornAt = new Map(); sim.fading = [];
-    sim.generation = WELCOME_PRE_ADVANCE;
-    sim.animMs = 900 / WELCOME_GEN_PER_SEC;
+    sim.generation = 120;
+    sim.animMs = 75;
     sim.version++;
   }
 
@@ -282,58 +276,6 @@ export class WelcomeShow {
       perf.end('sim/bake playback', timing);
       return;
     }
-    const seconds = Math.min(WELCOME_SECONDS, Math.max(0, (now - this.startAt) / 1000));
-    const elapsed = now - this.lastFrame;
-    this.lastFrame = now;
-    const simTiming = perf.start();
-    const oldLevel = this.quality.level;
-    const level = this.quality.update(seconds, elapsed, document.hidden);
-    if (level >= 1 && this.particles) { this.particles.destroy(); this.particles = null; }
-    const cut = WELCOME_SHOTS.some((shot) => shot.cut && this.previousSeconds < shot.start && seconds >= shot.start);
-    this.previousSeconds = seconds;
-    // A cut invalidates the padded cluster selection even if no generation changed.
-    if (cut) this.host.sim.version++;
-    if (level >= 2 && oldLevel < 2 && !this.small) {
-      this.selectScene(true, this.steps, now);
-      this.genesisInserted = 5;
-    }
-    if (level >= 3) { this.transition = 'dive'; this.lens?.destroy(); this.lens = null; }
-    if (perf.enabled) perf.quality = `welcome Q${level} / ${this.small ? 'small' : 'full'} / ${this.transition}`;
-    const frame = welcomeLensTimeline(seconds, this.host.cam.w, this.host.cam.h, this.transition);
-    Object.assign(this.host.cam, frame.main);
-    // Bound catch-up after dropped frames / background tabs to four generations/frame.
-    const seed = welcomePattern('rpentomino', WELCOME_GENESIS.x, WELCOME_GENESIS.y);
-    const visible = Math.min(seed.length, Math.max(0, Math.floor((seconds - 0.12) / 0.18) + 1));
-    if (visible > this.genesisInserted) {
-      this.host.sim.addMany(seed.slice(this.genesisInserted, visible), now);
-      this.genesisInserted = visible;
-    }
-    this.host.sim.animMs = seconds >= WELCOME_ZOOM_END && seconds < 13.5 ? 225 : 900 / WELCOME_GEN_PER_SEC;
-    const wanted = welcomeGeneration(seconds);
-    const births: number[] = [];
-    for (let i = 0; this.steps < wanted && i < 4; i++, this.steps++) {
-      const baked = this.bake?.get(this.small, this.steps + 1);
-      births.push(...(baked ? applyBakedFrame(this.host.sim, baked, now) : this.host.sim.advance(now)));
-    }
-    this.host.sim.prune(now);
-    perf.end('sim/bake playback', simTiming);
-    this.sound?.update(seconds, this.host.sim.generation, births, this.small ? 2 : 4);
-    const particleTiming = perf.start();
-    this.particles?.update(now, seconds, births, this.host.cam);
-    perf.end('particles', particleTiming);
-    const lensTiming = perf.start();
-    if (frame.lensVisible && !this.lens) this.lens = new WelcomeLens(this.presentation.stage, this.presentation.view);
-    this.lens?.update(now, this.host.sim, this.host.cam.w, this.host.cam.h, frame);
-    if (seconds >= WELCOME_ZOOM_END + 0.15) { this.lens?.destroy(); this.lens = null; }
-    perf.end('lens', lensTiming);
-    this.speedLines.style.opacity = String(frame.speedAlpha);
-    this.flash.style.opacity = String(frame.flashAlpha);
-    const beat = welcomeBeat(seconds);
-    if (beat !== this.beat) {
-      this.beat = beat;
-      this.render(false);
-    }
-    if (seconds >= WELCOME_SECONDS) this.finish();
   }
 
   private renderSpeaker() {
@@ -350,68 +292,56 @@ export class WelcomeShow {
     return button;
   }
 
-  private render(final: boolean) {
-    const focusedSpeaker = document.activeElement === this.speaker;
-    const heading = node('h2', 'welcome-title', final ? (this.reduced ? 'cute life ~' : WELCOME_CARD.title) : WELCOME_SHOTS[this.beat].caption);
+  private render() {
+    const heading = node('h2', 'welcome-title', this.reduced ? WELCOME_LINES[0] : WELCOME_CARD.title);
     heading.id = 'welcome-title';
     const copy = node('div', 'welcome-copy');
     copy.id = 'welcome-copy';
-    copy.setAttribute('aria-live', 'polite');
-    const lines = final && this.reduced ? WELCOME_LINES.slice(1) : [];
-    for (const line of lines) copy.append(node('p', '', line));
-    if (!final && this.beat === 4) {
-      const rules = node('div', 'welcome-rule-strip');
-      WELCOME_MOODS.forEach(({ rule }, index) => {
-        const row = node('div', 'welcome-rule');
-        row.append(welcomeFace(index), node('span', '', rule)); rules.append(row);
-      });
-      copy.append(rules);
-    }
+    if (this.reduced) for (const line of WELCOME_LINES.slice(1)) copy.append(node('p', '', line));
+    copy.append(node('p', 'welcome-invitation', WELCOME_CARD.text));
     const actions = node('div', 'welcome-actions');
-    if (final) {
-      copy.append(node('p', 'welcome-invitation', WELCOME_CARD.text));
-      actions.append(this.action(WELCOME_CARD.tour, () => this.close(true)),
-        this.action(WELCOME_CARD.play, () => this.close(false)));
-    } else actions.append(this.action(WELCOME_CARD.skip, () => this.finish(), 'welcome-skip'));
+    actions.append(this.action(WELCOME_CARD.tour, () => this.close(true)), this.action(WELCOME_CARD.play, () => this.close(false)));
     this.note.replaceChildren(heading, copy, actions);
-    if (!focusedSpeaker) actions.querySelector('button')?.focus({ preventScroll: true });
+    actions.querySelector('button')?.focus({ preventScroll: true });
   }
 
   private finish() {
     if (this.final || this.closing) return;
-    if (this.gated) {
-      this.gated = false;
-      this.overlay?.classList.remove('welcome-gated');
-      this.selectScene(this.small, 0, performance.now());
+    if (this.reduced && !this.poster) {
+      this.poster = node('img', 'welcome-poster');
+      this.poster.src = introSource(this.host.cam.w, this.host.cam.h, import.meta.env.BASE_URL).poster;
+      this.poster.alt = '';
+      this.overlay?.prepend(this.poster);
     }
-    this.bake?.destroy(); this.bake = null;
+    this.gated = false;
     this.final = true;
     this.frozenAt = performance.now();
-    this.lens?.destroy(); this.lens = null;
-    this.speedLines.style.opacity = this.flash.style.opacity = '0';
-    this.particles?.destroy(); this.particles = null;
-    // Skip and completion share the widest view and the same choice card.
-    if (!this.reduced) Object.assign(this.host.cam, welcomeCamera(WELCOME_SECONDS, this.host.cam.w, this.host.cam.h));
-    this.sound?.finish();
+    clearTimeout(this.bufferTimer);
+    clearTimeout(this.failureTimer);
+    this.video?.pause();
+    this.lease?.release(); this.lease = null;
+    this.presentation.view.dotBitmapEnabled = this.savedBitmap;
+    this.presentation.view.visibleOrganismsOnly = this.savedVisibleOrganisms;
+    if (!this.savedBitmap) this.presentation.view.releaseDotBitmap?.();
+    this.restore?.(); this.restore = null;
+    this.overlay?.classList.remove('welcome-gated', 'welcome-playing');
+    this.video?.classList.add('welcome-video-finished');
     this.overlay?.classList.add('welcome-final');
-    this.render(true);
+    this.render();
   }
 
   private close(tour: boolean) {
     if (this.closing) return;
     this.closing = true;
     this.frozenAt = performance.now();
-    this.lens?.destroy(); this.lens = null;
-    this.particles?.destroy(); this.particles = null;
-    // Stop tails immediately, even while the paper fades away.
-    this.sound?.dispose(); this.sound = null;
     this.overlay?.classList.add('welcome-closing');
-    document.body.classList.add('welcome-leaving');
     window.setTimeout(() => {
       this.presentation.view.dotBitmapEnabled = this.savedBitmap;
       this.presentation.view.visibleOrganismsOnly = this.savedVisibleOrganisms;
       if (!this.savedBitmap) this.presentation.view.releaseDotBitmap?.();
       this.restore?.(); this.restore = null;
+      if (this.video) { this.video.removeAttribute('src'); this.video.load(); this.video = null; }
+      this.poster = null;
       this.overlay?.remove(); this.overlay = null;
       this.backgrounds.forEach(({ node: el, inert }) => { el.inert = inert; });
       document.body.classList.remove('welcome-showing', 'welcome-leaving');

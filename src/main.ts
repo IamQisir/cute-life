@@ -4,18 +4,28 @@ import '@fontsource/caveat/700.css';
 import '@fontsource/patrick-hand/400.css';
 import { Application, UPDATE_PRIORITY } from 'pixi.js';
 import { MusicBox } from './audio/musicBox';
+import { fromChallengeHash, fromReplayHash } from './battle/challenge';
+import { BattleMode, type Opponent } from './battle/mode';
 import { attachInput } from './input';
 import { keyX, keyY, toList } from './life/engine';
 import { PATTERNS, type Pattern, placePattern } from './life/patterns';
+import { ArenaView } from './render/arenaView';
 import { Camera } from './render/camera';
+import { TerritoryView } from './render/territoryView';
 import { WorldView } from './render/world';
 import { fromHash, toHash } from './share/link';
 import { Recorder, type Recording } from './share/recorder';
 import { Sim } from './sim';
+import { BattleHud } from './ui/battleHud';
+import type { CardHandlers } from './ui/patternCard';
 import { Hud } from './ui/hud';
 
 const POPULATION_CAP = 25000;
 const MAX_RECORD_SECONDS = 15;
+/** A recorded battle replay: long enough for a large arena at 8 gen/s plus the slow finale. */
+const MAX_BATTLE_RECORD_SECONDS = 60;
+const RECORD_GEN_PER_SEC = 8;
+const RESULT_HOLD_MS = 2000;
 /** Links longer than this still work, but some apps truncate them. */
 const LONG_LINK = 8000;
 const POST_TEXT = 'my little cells are growing 🌱 #cutelife #GameOfLife';
@@ -47,6 +57,9 @@ async function main() {
   let hover: [number, number] | null = null;
   let started = false;
   let lastPopAt = 0;
+  let mode: 'sandbox' | 'battle' = 'sandbox';
+  let sandboxCam = { x: 0, y: 0, zoom: 40 };
+  let recordingReplay = false;
 
   const syncAnim = () => {
     sim.animMs = Math.min(420, (1000 / genPerSec) * 0.9);
@@ -73,12 +86,20 @@ async function main() {
     toggleHand,
     toggleRecord,
     share() {
-      copyLink();
+      if (mode === 'battle') shareReplay();
+      else copyLink();
+    },
+    toggleBattle() {
+      if (mode === 'battle') exitBattle();
+      else enterBattle();
+    },
+    cardDrag: {
+      pick: () => {},
+      drag: (p, x, y) => cardDrag.drag(p, x, y),
+      drop: (p, x, y) => cardDrag.drop(p, x, y),
     },
     pickPattern(p) {
-      pattern = p;
-      rotation = 0;
-      hud.setPattern(p);
+      selectPattern(p);
       if (p) hud.toast('click to place ~ R rotates ~ shift+click keeps stamping');
     },
   });
@@ -147,6 +168,55 @@ async function main() {
     return pts.map(([px, py]) => [px + x, py + y]);
   }
 
+  /** The current stamp, shown highlighted in whichever palette is visible. */
+  function selectPattern(p: Pattern | null) {
+    if (p !== pattern) rotation = 0;
+    pattern = p;
+    hud.setPattern(mode === 'sandbox' ? p : null);
+    battleHud.setPicked(mode === 'battle' ? p : null);
+  }
+
+  /** Drop the current stamp at a cell, in whichever mode is active. */
+  function placeStampAt(x: number, y: number, keep: boolean) {
+    if (!pattern) return;
+    const pts = stampPoints(x, y);
+    if (mode === 'battle') {
+      const problem = battle.placeStamp(pts, performance.now());
+      if (problem === 'zone') hud.toast('keep it inside your zone ~');
+      else if (problem === 'budget') hud.toast('not enough cells left for that one');
+      else audio.pop(x, y);
+    } else {
+      sim.addMany(pts, performance.now());
+      forgetSharedLink();
+      audio.pop(x, y);
+      refreshStatus();
+    }
+    if (!keep) selectPattern(null);
+  }
+
+  // Dragging a palette card onto the canvas (the canvas fills the window, so
+  // client coordinates are canvas coordinates).
+  const cardDrag: CardHandlers = {
+    pick(p) {
+      selectPattern(pattern === p ? null : p);
+    },
+    drag(p, cx, cy) {
+      audio.unlock();
+      if (pattern !== p) selectPattern(p);
+      hover = cam.cellAt(cx, cy);
+    },
+    drop(p, cx, cy) {
+      if (pattern !== p) selectPattern(p);
+      if (document.elementFromPoint(cx, cy) === app.canvas) {
+        const [x, y] = cam.cellAt(cx, cy);
+        placeStampAt(x, y, false);
+      } else {
+        selectPattern(null);
+      }
+      hover = null;
+    },
+  };
+
   // ---- sharing -------------------------------------------------------------
 
   const icon = WorldView.portrait('happy', 0);
@@ -169,7 +239,11 @@ async function main() {
     ctx.fillText(label, w - pad - tw, h - pad);
     ctx.font = `500 ${Math.round(size * 0.8)}px Caveat, cursive`;
     ctx.fillStyle = '#7a6a5c';
-    ctx.fillText(`generation ${sim.generation} · ${sim.population} cells`, pad, h - pad);
+    const status =
+      mode === 'battle'
+        ? `territory red ${battle.sim.territory.red} · blue ${battle.sim.territory.blue} · generation ${battle.sim.generation}`
+        : `generation ${sim.generation} · ${sim.population} cells`;
+    ctx.fillText(status, pad, h - pad);
     ctx.restore();
   }
 
@@ -213,6 +287,11 @@ async function main() {
   function onRecorded(r: Recording) {
     hud.setRecording(null, MAX_RECORD_SECONDS);
     shownSecond = -1;
+    if (recordingReplay) {
+      recordingReplay = false;
+      battle.slowFinale = false;
+      recorder.setLimit(MAX_RECORD_SECONDS);
+    }
     if (clipUrl) URL.revokeObjectURL(clipUrl);
     clipUrl = URL.createObjectURL(r.blob);
     hud.showResult(clipUrl, r.ext, {
@@ -224,8 +303,10 @@ async function main() {
       },
       copyLink,
       post() {
-        const url = sim.population ? shareLink() : location.origin + location.pathname;
-        const intent = `https://x.com/intent/post?text=${encodeURIComponent(POST_TEXT)}&url=${encodeURIComponent(url)}`;
+        const battleLink = mode === 'battle' ? battle.replayLink() : null;
+        const url = battleLink ?? (sim.population ? shareLink() : location.origin + location.pathname);
+        const text = battleLink ? resultText() : POST_TEXT;
+        const intent = `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
         window.open(intent, '_blank', 'noopener');
       },
     });
@@ -242,14 +323,159 @@ async function main() {
       hud.toast("sorry, this browser can't record video");
       return;
     }
-    if (!playing && sim.population > 0) setPlaying(true);
+    if (mode === 'sandbox' && !playing && sim.population > 0) setPlaying(true);
     hud.setRecording(0, MAX_RECORD_SECONDS);
+  }
+
+  async function copyText(text: string, ok: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      hud.toast(ok);
+    } catch {
+      window.prompt('copy this link:', text);
+    }
+  }
+
+  // ---- battle --------------------------------------------------------------
+
+  const territoryView = new TerritoryView();
+  const arenaView = new ArenaView();
+  view.underlay.addChild(territoryView.root, arenaView.root);
+  let framedPhase = '';
+  const battle = new BattleMode({
+    changed() {
+      battleHud.render(battle);
+      // Panels change with the phase, so the free space for the arena does too.
+      if (battle.phase !== 'deploy' && pattern) selectPattern(null);
+      if (mode === 'battle' && battle.phase !== framedPhase) fitArena();
+    },
+    births: (pts) => audio.births(pts),
+    resized: () => fitArena(),
+    finished(outcome) {
+      battleHud.render(battle);
+      audio.fanfare(outcome.youWon !== false);
+      if (recordingReplay) {
+        // Linger on the final board for a moment, then stop the clip.
+        setTimeout(() => recorder.recording && recorder.stop(), RESULT_HOLD_MS);
+      }
+    },
+  });
+  const battleHud = new BattleHud(document.getElementById('hud')!, {
+    ready: () => {
+      audio.unlock();
+      battle.ready(performance.now());
+    },
+    random: () => battle.randomArmy(performance.now()),
+    clear: () => battle.clearArmy(performance.now()),
+    setStars: (s) => battle.setStars(s),
+    setSize: (size) => battle.setSize(size, performance.now()),
+    challenge(name) {
+      const link = battle.challengeLink(name.trim() || undefined);
+      if (link) copyText(link, 'challenge link copied! send it to a friend ~');
+    },
+    editArmy: () => battle.editArmy(performance.now()),
+    replay: () => battle.replay(performance.now()),
+    vsAi: () => {
+      forgetSharedLink();
+      battle.start({ kind: 'ai', stars: 3 }, performance.now());
+    },
+    shareReplay,
+    postResult() {
+      const link = battle.replayLink();
+      if (!link) return;
+      const intent = `https://x.com/intent/post?text=${encodeURIComponent(resultText())}&url=${encodeURIComponent(link)}`;
+      window.open(intent, '_blank', 'noopener');
+    },
+    recordReplay,
+    togglePause: () => battle.togglePause(),
+    finishNow: () => battle.finishNow(performance.now()),
+    setSpeed: (v) => (battle.genPerSec = v),
+    cards: cardDrag,
+  });
+  battleHud.show(false);
+
+  function resultText(): string {
+    const o = battle.outcome;
+    const opp = battle.opponent;
+    const score = o ? ` ${o.red} : ${o.blue}` : '';
+    if (o?.youWon && opp.kind === 'ai') return `my cell army beat the ${'★'.repeat(opp.stars)} AI${score} 🦠 #cutelife`;
+    if (o?.youWon && opp.kind === 'challenge') return `I beat ${opp.name || 'a friend'}'s cell army${score} 🦠 #cutelife`;
+    return `watch these cell armies fight${score} 🦠 #cutelife`;
+  }
+
+  function shareReplay() {
+    const link = battle.replayLink();
+    if (link) copyText(link, 'replay link copied ~ anyone can watch this battle!');
+    else hud.toast('finish a battle first, then share the replay!');
+  }
+
+  /** Frame the arena between the battle title and the bottom controls. */
+  /** Frame the arena in the space the HUD panels leave free. */
+  function fitArena() {
+    const { width, height } = battle.cfg;
+    framedPhase = battle.phase;
+    const a = battleHud.freeArea(cam.w, cam.h);
+    cam.zoom = Math.max(4, Math.min((a.right - a.left) / width, (a.bottom - a.top) / height));
+    const cx = (a.left + a.right) / 2;
+    const cy = (a.top + a.bottom) / 2;
+    cam.x = width / 2 - (cx - cam.w / 2) / cam.zoom;
+    cam.y = height / 2 - (cy - cam.h / 2) / cam.zoom;
+  }
+
+  function enterBattle(opponent?: Opponent) {
+    const t = performance.now();
+    if (mode === 'sandbox') {
+      sandboxCam = { x: cam.x, y: cam.y, zoom: cam.zoom };
+      setPlaying(false);
+    }
+    selectPattern(null);
+    mode = 'battle';
+    hud.setMode('battle');
+    battleHud.show(true);
+    framedPhase = '';
+    const keepStars = battle.opponent.kind === 'ai' ? battle.opponent.stars : 3;
+    battle.start(opponent ?? { kind: 'ai', stars: keepStars }, t);
+  }
+
+  function exitBattle() {
+    selectPattern(null);
+    mode = 'sandbox';
+    hud.setMode('sandbox');
+    battleHud.show(false);
+    hud.closeResult();
+    Object.assign(cam, sandboxCam);
+    if (fromChallengeHash(location.hash) || fromReplayHash(location.hash)) forgetSharedLink();
+  }
+
+  function recordReplay() {
+    if (recorder.recording) return;
+    audio.unlock();
+    if (!recorder.start(onRecorded)) {
+      hud.toast("sorry, this browser can't record video");
+      return;
+    }
+    // The whole battle in one clip, slowing down for the last generations.
+    recordingReplay = true;
+    recorder.setLimit(MAX_BATTLE_RECORD_SECONDS);
+    battle.genPerSec = RECORD_GEN_PER_SEC;
+    battle.slowFinale = true;
+    hud.setRecording(0, recorder.limit);
+    battle.replay(performance.now());
   }
 
   attachInput(app.canvas, {
     cam,
     paint(x, y, value) {
       const now = performance.now();
+      if (mode === 'battle') {
+        const painted = battle.paint(x, y, now, value);
+        if (painted !== null && now - lastPopAt > 90) {
+          if (painted) audio.pop(x, y);
+          else audio.poof();
+          lastPopAt = now;
+        }
+        return painted ?? false;
+      }
       const v = value ?? !sim.has(x, y);
       if (sim.set(x, y, v, now)) {
         forgetSharedLink();
@@ -264,17 +490,10 @@ async function main() {
     },
     stamp(x, y, keep) {
       if (!pattern) return false;
-      sim.addMany(stampPoints(x, y), performance.now());
-      forgetSharedLink();
-      audio.pop(x, y);
-      refreshStatus();
-      if (!keep) {
-        pattern = null;
-        hud.setPattern(null);
-      }
+      placeStampAt(x, y, keep);
       return true;
     },
-    hasStamp: () => pattern !== null,
+    hasStamp: () => pattern !== null && (mode === 'sandbox' || battle.phase === 'deploy'),
     isHand: () => hand,
     onFirstGesture() {
       audio.unlock();
@@ -283,13 +502,23 @@ async function main() {
         hud.dismissHint();
       }
     },
-    togglePlay,
-    step: stepOnce,
-    shuffle,
+    togglePlay() {
+      if (mode === 'sandbox') return togglePlay();
+      audio.unlock();
+      if (battle.phase === 'deploy') battle.ready(performance.now());
+      else battle.togglePause();
+    },
+    step() {
+      if (mode === 'sandbox') stepOnce();
+      else battle.ready(performance.now());
+    },
+    shuffle() {
+      if (mode === 'sandbox') shuffle();
+      else battle.randomArmy(performance.now());
+    },
     toggleHand,
     cancelStamp() {
-      pattern = null;
-      hud.setPattern(null);
+      selectPattern(null);
     },
     rotateStamp() {
       rotation = (rotation + 1) % 4;
@@ -335,6 +564,7 @@ async function main() {
     cam.w = app.screen.width;
     cam.h = app.screen.height;
     view.resize(cam.w, cam.h);
+    if (mode === 'battle') fitArena();
   });
 
   app.ticker.add(() => {
@@ -343,6 +573,20 @@ async function main() {
       lastStep = t;
       advance();
     }
+    if (mode === 'battle') {
+      battle.update(t);
+      territoryView.update(cam, battle.sim);
+      arenaView.update(cam, battle.layout(), battle.arenaState());
+      let ghost = null;
+      if (pattern && hover && battle.phase === 'deploy') {
+        const points = stampPoints(hover[0], hover[1]);
+        ghost = { points, team: battle.myTeam, invalid: battle.stampProblem(points) !== null };
+      }
+      view.update(t, battle.sim, cam, ghost, battle.phase === 'deploy');
+      return;
+    }
+    territoryView.update(cam, null);
+    arenaView.update(cam, null, { showZones: [] });
     sim.prune(t);
     const stamp = pattern && hover ? { points: stampPoints(hover[0], hover[1]) } : null;
     view.update(t, sim, cam, stamp, true);
@@ -355,9 +599,19 @@ async function main() {
     const sec = Math.floor(recorder.elapsed);
     if (sec !== shownSecond && recorder.recording) {
       shownSecond = sec;
-      hud.setRecording(sec, MAX_RECORD_SECONDS);
+      hud.setRecording(sec, recorder.limit);
     }
   }, undefined, UPDATE_PRIORITY.UTILITY);
+
+  // Challenge and replay links open straight into a battle.
+  const challenge = fromChallengeHash(location.hash);
+  const replayLink = fromReplayHash(location.hash);
+  if (challenge) {
+    enterBattle({ kind: 'challenge', army: challenge.army, name: challenge.name, size: challenge.size ?? 'small' });
+    hud.toast(`${challenge.name || 'someone'} challenged you! deploy your blue army ~`, 5000);
+  } else if (replayLink) {
+    enterBattle({ kind: 'replay', red: replayLink.red, blue: replayLink.blue, size: replayLink.size ?? 'small' });
+  }
 
   // ?play starts running immediately, ?zoom=N sets pixels per cell; handy for demos and screenshots.
   const params = new URLSearchParams(location.search);
@@ -366,7 +620,7 @@ async function main() {
   if (params.has('play')) setPlaying(true);
 
   // Handy for debugging and for future screenshot tooling.
-  Object.assign(window, { cuteLife: { sim, cam, togglePlay, stepOnce } });
+  Object.assign(window, { cuteLife: { sim, cam, togglePlay, stepOnce, battle, enterBattle } });
 }
 
 main();

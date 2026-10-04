@@ -1,6 +1,7 @@
 import { PATTERNS, type Pattern } from '../life/patterns';
 import type { SoundMode } from '../audio/musicBox';
 import { WorldView } from '../render/world';
+import { type CardHandlers, patternCard } from './patternCard';
 
 export interface HudActions {
   togglePlay(): void;
@@ -13,6 +14,9 @@ export interface HudActions {
   pickPattern(p: Pattern | null): void;
   toggleRecord(): void;
   share(): void;
+  toggleBattle(): void;
+  /** Drag-and-drop from palette cards onto the canvas. */
+  cardDrag: CardHandlers;
 }
 
 export interface ResultActions {
@@ -38,33 +42,13 @@ function button(text: string, onClick: () => void, cls = ''): HTMLButtonElement 
   return b;
 }
 
-/** Tiny drawing of a pattern made of happy cells, for the palette cards. */
-function patternThumb(p: Pattern): HTMLCanvasElement {
-  const cell = WorldView.portrait('happy', 0);
-  const h = p.rows.length;
-  const w = Math.max(...p.rows.map((r) => r.length));
-  const size = 60;
-  const unit = Math.min(size / w, size / h, 16);
-  const c = el('canvas');
-  c.width = c.height = size * 2;
-  c.style.width = c.style.height = `${size}px`;
-  const ctx = c.getContext('2d')!;
-  ctx.scale(2, 2);
-  const ox = (size - w * unit) / 2;
-  const oy = (size - h * unit) / 2;
-  p.rows.forEach((row, y) =>
-    [...row].forEach((ch, x) => {
-      if (ch === 'O') ctx.drawImage(cell, ox + x * unit - unit * 0.1, oy + y * unit - unit * 0.1, unit * 1.2, unit * 1.2);
-    }),
-  );
-  return c;
-}
-
 export class Hud {
   private status = el('div', 'status');
   private playBtn: HTMLButtonElement;
   private soundBtn: HTMLButtonElement;
   private recordBtn: HTMLButtonElement;
+  private battleBtn: HTMLButtonElement;
+  private root: HTMLElement;
   private modal: HTMLElement | null = null;
   private handBtn: HTMLButtonElement;
   private hint = el('div', 'hint');
@@ -73,6 +57,7 @@ export class Hud {
   private cards = new Map<Pattern, HTMLElement>();
 
   constructor(root: HTMLElement, a: HudActions) {
+    this.root = root;
     const title = el('div', 'title');
     const icon = el('img');
     icon.src = WorldView.portrait('happy', 0).toDataURL();
@@ -83,16 +68,16 @@ export class Hud {
     this.soundBtn = button('sound on', a.toggleSound);
     this.handBtn = button('move', a.toggleHand);
     this.recordBtn = button('record', a.toggleRecord, 'rec');
-    topRight.append(this.recordBtn, button('share', a.share), this.handBtn, this.soundBtn);
+    this.battleBtn = button('battle!', a.toggleBattle, 'battle-btn');
+    topRight.append(this.battleBtn, this.recordBtn, button('share', a.share), this.handBtn, this.soundBtn);
 
     const palette = el('div', 'palette');
     palette.append(el('div', 'label', 'stamps'));
+    const cell = WorldView.portrait('happy', 0);
     for (const p of PATTERNS) {
-      const card = el('div', 'card');
-      card.append(patternThumb(p), el('div', '', p.name));
-      card.addEventListener('click', (e) => {
-        e.stopPropagation();
-        a.pickPattern(card.classList.contains('on') ? null : p);
+      const card = patternCard(p, cell, {
+        ...a.cardDrag,
+        pick: () => a.pickPattern(card.classList.contains('on') ? null : p),
       });
       this.cards.set(p, card);
       palette.append(card);
@@ -146,6 +131,12 @@ export class Hud {
 
   setPattern(p: Pattern | null) {
     for (const [q, card] of this.cards) card.classList.toggle('on', q === p);
+  }
+
+  /** Switch the HUD between the sandbox and battle layouts. */
+  setMode(mode: 'sandbox' | 'battle') {
+    this.root.classList.toggle('battle', mode === 'battle');
+    this.battleBtn.textContent = mode === 'battle' ? 'sandbox' : 'battle!';
   }
 
   /** Seconds elapsed while recording, or null when idle. */

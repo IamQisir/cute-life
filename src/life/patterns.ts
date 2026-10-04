@@ -27,7 +27,16 @@ export const PATTERNS: Pattern[] = [
     '..OOO...OOO..',
   ] },
   { name: 'r-pentomino', rows: ['.OO', 'OO.', '.O.'] },
+  { name: 'acorn', rows: ['.O.....', '...O...', 'OO..OOO'] },
+  { name: 'block', rows: ['OO', 'OO'] },
 ];
+
+/** Cheap structures that move or grow: the useful ones under a cell budget. */
+export const BATTLE_PATTERN_NAMES = ['glider', 'lwss', 'acorn', 'r-pentomino', 'block', 'blinker', 'toad'];
+
+export function cellCount(p: Pattern): number {
+  return p.rows.join('').split('').filter((c) => c === 'O').length;
+}
 
 /** Returns pattern cells centred on (cx, cy). */
 export function placePattern(p: Pattern, cx: number, cy: number): [number, number][] {

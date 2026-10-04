@@ -231,6 +231,146 @@ html, body {
 }
 .modal-note { font-size: 18px; color: var(--ink-soft); text-align: center; }
 
+/* ---- battle ---------------------------------------------------------- */
+#hud.battle .palette, #hud.battle .bottom, #hud.battle .hint, #hud.battle .sleeper { display: none; }
+/* #hud > .battle-hud beats the generic `#hud > *` rule, so clicks reach the canvas. */
+#hud > .battle-hud { position: absolute; inset: 0; pointer-events: none; }
+.battle-hud > * { pointer-events: auto; }
+.battle-head {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+  width: min(520px, calc(100% - 32px));
+}
+.battle-title {
+  font-family: 'Caveat', cursive;
+  font-weight: 700;
+  font-size: 38px;
+  line-height: 1;
+  color: var(--ink);
+  white-space: nowrap;
+  transform: rotate(-1deg);
+}
+.battle-sub { font-size: 18px; color: var(--ink-soft); white-space: nowrap; }
+.scoreboard { width: 100%; text-align: center; margin-top: 2px; }
+.score-row { display: flex; align-items: center; gap: 10px; }
+.score { font-family: 'Caveat', cursive; font-weight: 700; font-size: 26px; min-width: 76px; }
+.score.red, .result-score .red, .result-title.red { color: var(--red); }
+.score.blue, .result-score .blue, .result-title.blue { color: var(--blue); }
+.score.red { text-align: right; }
+.score.blue { text-align: left; }
+.score-bar {
+  flex: 1;
+  height: 14px;
+  background: #9fb4e6;
+  border: 1.6px solid var(--ink);
+  border-radius: var(--sketch);
+  overflow: hidden;
+}
+.score-bar .red { height: 100%; background: #ec8f7b; transition: width 0.2s ease; }
+.score-gen { font-size: 15px; color: var(--ink-soft); }
+
+/* Wide: palette left, controls right, vertically centred. */
+.battle-palette, .battle-side {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: calc(100% - 140px);
+  overflow-y: auto;
+  padding: 4px;
+}
+.battle-palette { left: 14px; }
+.battle-side { right: 14px; width: 200px; gap: 14px; }
+.battle-palette .label, .side-group .label {
+  font-family: 'Caveat', cursive;
+  font-size: 22px;
+  color: var(--ink-soft);
+  text-align: center;
+}
+.side-group { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.side-group.sizes { flex-direction: column; }
+.side-group .btn { font-size: 18px; padding: 3px 10px; }
+.side-group .btn.big { font-size: 26px; }
+.side-group .speed { justify-content: center; }
+.card .cost { font-size: 14px; color: var(--ink-soft); }
+/* Smaller cards so the whole battle palette fits without scrolling. */
+.battle-palette .card { width: 76px; padding: 3px 2px 1px; }
+.battle-palette .card canvas { width: 46px !important; height: 46px !important; }
+.battle-palette .card div { font-size: 15px; line-height: 1.1; }
+.card.off { opacity: 0.35; pointer-events: none; }
+.card.dragging { opacity: 0.5; }
+.stars { font-size: 28px; cursor: pointer; letter-spacing: 2px; color: #d8cdbd; user-select: none; text-align: center; }
+.stars .on { color: #e0a640; }
+.stars span:hover { transform: scale(1.15); display: inline-block; }
+.name-input {
+  font: inherit;
+  font-size: 17px;
+  padding: 4px 10px;
+  width: 100%;
+  background: rgba(255, 252, 245, 0.85);
+  border: 1.6px solid var(--ink-soft);
+  border-radius: var(--sketch-2);
+  color: var(--ink);
+}
+
+/* Narrow: palette strip and controls stacked at the bottom. */
+@media (max-width: 899px) {
+  .battle-palette, .battle-side {
+    top: auto;
+    transform: none;
+    left: 0;
+    right: 0;
+    width: auto;
+    max-height: none;
+  }
+  .battle-side { bottom: 8px; flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 0 8px; }
+  .battle-palette { bottom: 128px; flex-direction: row; overflow-x: auto; padding: 4px 10px; }
+  .battle-palette .label, .side-group .label { display: none; }
+  .battle-palette .card { flex: 0 0 auto; width: 62px; padding: 4px 2px 0; }
+  .battle-palette .card canvas { width: 40px !important; height: 40px !important; }
+  .side-group, .side-group.sizes { flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; }
+  .side-group .btn { font-size: 16px; }
+  .side-group .btn.big { font-size: 20px; }
+  .stars { font-size: 22px; }
+  .name-input { width: 160px; }
+  .battle-title { font-size: 26px; }
+  .battle-head { top: 56px; }
+}
+
+.result-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-1deg);
+  width: min(560px, calc(100% - 32px));
+  padding: 16px 20px 18px;
+  background: #fffbef;
+  border: 2px solid var(--ink);
+  border-radius: var(--sketch);
+  box-shadow: 4px 6px 0 rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.result-title { font-family: 'Caveat', cursive; font-weight: 700; font-size: 56px; line-height: 1; }
+.result-title.draw { color: var(--ink); }
+.result-score { font-family: 'Caveat', cursive; font-weight: 700; font-size: 40px; line-height: 1; }
+.result-detail { font-size: 16px; color: var(--ink-soft); margin-bottom: 4px; }
+
+@media (max-width: 720px) {
+  .result-title { font-size: 42px; }
+}
+
 @keyframes blink { 50% { opacity: 0; } }
 @keyframes bob { 50% { transform: translateY(-4px) rotate(-4deg); } }
 @keyframes breathe { 50% { transform: scale(1.05, 0.95) translateY(2px); } }

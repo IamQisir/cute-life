@@ -132,6 +132,14 @@ export class MusicBox {
     this.bell(f, this.ctx.currentTime, 0.06);
   }
 
+  /** A little arpeggio at the end of a battle: rising if you won, falling if not. */
+  fanfare(happy: boolean) {
+    if (!this.ctx || !this.notesOn) return;
+    const t = this.ctx.currentTime;
+    const notes = happy ? [0, 4, 7, 12] : [12, 9, 5, 0];
+    notes.forEach((n, i) => this.bell(ROOT_HZ * Math.pow(2, n / 12), t + i * 0.14, 0.08));
+  }
+
   /** Soft bubble pop for placing a cell by hand. */
   pop(x: number, y: number) {
     if (!this.ctx || !this.notesOn) return;

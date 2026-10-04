@@ -9,7 +9,7 @@
 import { Container, Graphics, type Texture, TilingSprite } from 'pixi.js';
 import { type Cluster, type Family, findClusters } from '../life/clusters';
 import { key, keyX, keyY } from '../life/engine';
-import type { Sim } from '../sim';
+import type { SimView } from '../sim';
 import type { Camera } from './camera';
 import { MOODS, type Mood, PALETTES, TEX_SIZE, drawFaceOnly, drawHatch, drawNote, drawZ } from './cellArt';
 import { SpritePool, cellHash, tex } from './util';
@@ -59,14 +59,14 @@ export class OrganismView {
     for (const m of MOODS) this.faces[m] = tex(drawFaceOnly(PALETTES[0], m));
   }
 
-  private ensureClusters(sim: Sim) {
+  private ensureClusters(sim: SimView) {
     if (this.clusterVersion === sim.version) return;
     this.clusters = findClusters(sim.cells);
     this.clusterVersion = sim.version;
   }
 
   /** Redraw membranes only when cells change, zoom changes a lot, or we pan off the drawn area. */
-  private needsBuild(sim: Sim, cam: Camera, vx0: number, vy0: number, vx1: number, vy1: number) {
+  private needsBuild(sim: SimView, cam: Camera, vx0: number, vy0: number, vx1: number, vy1: number) {
     const b = this.built;
     if (!b || b.version !== sim.version) return true;
     const ratio = cam.zoom / b.zoom;
@@ -74,7 +74,7 @@ export class OrganismView {
     return vx0 < b.x0 || vy0 < b.y0 || vx1 > b.x1 || vy1 > b.y1;
   }
 
-  private build(sim: Sim, cam: Camera, vx0: number, vy0: number, vx1: number, vy1: number) {
+  private build(sim: SimView, cam: Camera, vx0: number, vy0: number, vx1: number, vy1: number) {
     // Draw a margin around the view so small pans don't trigger a rebuild.
     const mx = (vx1 - vx0) * 0.5;
     const my = (vy1 - vy0) * 0.5;
@@ -152,7 +152,7 @@ export class OrganismView {
     if (lines) g.stroke({ width: 2.2 / cam.zoom, color: hex(PALETTES[0].outline), alpha: 0.6, cap: 'round' });
   }
 
-  update(now: number, sim: Sim, cam: Camera) {
+  update(now: number, sim: SimView, cam: Camera) {
     this.ensureClusters(sim);
     const z = cam.zoom;
     const [vx0, vy0] = cam.toWorld(0, 0);

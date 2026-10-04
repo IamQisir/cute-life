@@ -28,6 +28,10 @@ npm test
 npm run build
 ```
 
+Battle: press **battle!**, secretly deploy 20 red cells, then watch them fight
+a blue army for 150 generations. Play the AI (1-5 stars), send a **challenge
+link** to a friend, or share a **replay link** of any battle.
+
 Share: **share** copies a link that reopens your exact scene; **record**
 saves a short MP4 (with sound and a watermark) ready to post.
 
@@ -48,6 +52,7 @@ URL params for demos: `?play`, `?sprinkle`, `?zoom=8`.
 - `src/sim.ts` simulation state + animation bookkeeping (births, fades)
 - `src/render/` camera, procedural pencil art, PixiJS world view, `organisms.ts` mid-zoom view
 - `src/audio/` music box and ambient pad (Web Audio, no assets)
+- `src/battle/` arena rules, AI, challenge/replay links, battle flow
 - `src/ui/` HTML HUD; `src/input.ts` pointer, wheel, keyboard
 
 ## Credits

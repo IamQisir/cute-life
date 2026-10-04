@@ -431,13 +431,15 @@ export function drawBud(): HTMLCanvasElement {
 export function drawDot(palette: Palette): HTMLCanvasElement {
   const [canvas, ctx] = newCanvas();
   const c = TEX_SIZE / 2;
-  ctx.fillStyle = palette.hatch;
+  // Far away a dot is a few pixels: use the palette's dark ink so it stands
+  // out from the paper (the pastel hatch colour almost vanished).
+  ctx.fillStyle = palette.outline;
   ctx.beginPath();
-  ctx.arc(c, c, TEX_SIZE * 0.4, 0, Math.PI * 2);
+  ctx.arc(c, c, TEX_SIZE * 0.42, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = palette.nucleus;
   ctx.beginPath();
-  ctx.arc(c + TEX_SIZE * 0.08, c - TEX_SIZE * 0.08, TEX_SIZE * 0.14, 0, Math.PI * 2);
+  ctx.arc(c, c, TEX_SIZE * 0.2, 0, Math.PI * 2);
   ctx.fill();
   return canvas;
 }

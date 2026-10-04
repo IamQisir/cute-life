@@ -24,6 +24,7 @@ export interface HudActions {
   /** Drag-and-drop from palette cards onto the canvas. */
   cardDrag: CardHandlers;
   toggleSelect(): void;
+  toggleFollow(): void;
 }
 
 export interface ResultActions {
@@ -65,6 +66,7 @@ export class Hud {
   private customCards = new Map<Pattern, HTMLElement>();
   private customArea = el('div', 'custom-area');
   private selectBtn: HTMLButtonElement;
+  private followBtn: HTMLButtonElement;
   private picked: Pattern | null = null;
 
   constructor(root: HTMLElement, a: HudActions) {
@@ -79,9 +81,10 @@ export class Hud {
     this.soundBtn = button('sound on', a.toggleSound);
     this.handBtn = button('move', a.toggleHand);
     this.selectBtn = button('select', a.toggleSelect);
+    this.followBtn = button('follow', a.toggleFollow);
     this.recordBtn = button('record', a.toggleRecord, 'rec');
     this.battleBtn = button('battle!', a.toggleBattle, 'battle-btn');
-    topRight.append(this.battleBtn, this.recordBtn, button('share', a.share), this.selectBtn, this.handBtn, this.soundBtn);
+    topRight.append(this.battleBtn, this.recordBtn, button('share', a.share), this.followBtn, this.selectBtn, this.handBtn, this.soundBtn);
 
     const palette = el('div', 'palette');
     palette.classList.toggle('collapsed', isPaletteHidden());
@@ -160,6 +163,10 @@ export class Hud {
   setPattern(p: Pattern | null) {
     this.picked = p;
     for (const [q, card] of [...this.cards, ...this.customCards]) card.classList.toggle('on', q === p);
+  }
+
+  setFollow(on: boolean) {
+    this.followBtn.classList.toggle('on', on);
   }
 
   setSelect(on: boolean) {

@@ -21,6 +21,7 @@ import {
 import { PATTERNS, type Pattern, placePattern } from './life/patterns';
 import { ArenaView } from './render/arenaView';
 import { Camera } from './render/camera';
+import { type FollowTarget, followTarget } from './render/follow';
 import { TerritoryView } from './render/territoryView';
 import { WorldView } from './render/world';
 import { fromHash, toHash } from './share/link';
@@ -72,6 +73,11 @@ async function main() {
   let sandboxCam = { x: 0, y: 0, zoom: 40 };
   let recordingReplay = false;
   let selecting = false;
+  /** The camera keeps the body of the population in view until the player takes over. */
+  let following = true;
+  let followAim: FollowTarget | null = null;
+  let followFrame = 0;
+  let followHinted = false;
   /** Selection box in cells (inclusive), while the select tool is in use. */
   let selection: { x0: number; y0: number; x1: number; y1: number } | null = null;
 
@@ -111,6 +117,9 @@ async function main() {
       pick: () => {},
       drag: (p, x, y) => cardDrag.drag(p, x, y),
       drop: (p, x, y) => cardDrag.drop(p, x, y),
+    },
+    toggleFollow() {
+      setFollowing(!following);
     },
     toggleSelect() {
       setSelecting(!selecting);
@@ -615,6 +624,28 @@ async function main() {
     }
   }
 
+  function setFollowing(on: boolean) {
+    following = on;
+    followAim = null;
+    hud.setFollow(on);
+  }
+
+  /** Glide the camera toward the population's body (sandbox only). */
+  function followStep() {
+    if (!following || mode !== 'sandbox' || sim.population === 0) return;
+    if (followFrame++ % 10 === 0 || !followAim) {
+      // Leave room for the palette on the left and the controls at the bottom.
+      followAim = followTarget(sim.cells, Math.max(200, cam.w - 260), Math.max(200, cam.h - 200));
+    }
+    if (!followAim) return;
+    const k = 0.06;
+    // Offset so the body sits in the middle of the free area (palette on the left).
+    const offsetX = 110 / followAim.zoom;
+    cam.x += (followAim.x - offsetX - cam.x) * k;
+    cam.y += (followAim.y + 30 / followAim.zoom - cam.y) * k;
+    cam.zoom += (followAim.zoom - cam.zoom) * k;
+  }
+
   function drawSelection() {
     const g = selectionGfx;
     g.clear();
@@ -713,6 +744,14 @@ async function main() {
     setHover(c) {
       hover = c;
     },
+    manualCamera() {
+      if (!following || mode !== 'sandbox') return;
+      setFollowing(false);
+      if (!followHinted) {
+        followHinted = true;
+        hud.toast('camera is yours now ~ press follow to let it track the cells again');
+      }
+    },
   });
 
   // A shared link restores its pattern; otherwise start with a few friends
@@ -733,6 +772,7 @@ async function main() {
   );
   refreshStatus();
   hud.setSound(audio.mode);
+  hud.setFollow(following);
   syncAnim();
 
   const onResize = () => {
@@ -775,6 +815,8 @@ async function main() {
     }
     territoryView.update(cam, null);
     arenaView.update(cam, null, { showZones: [] });
+    // Only while running: when paused the player is drawing and the view must hold still.
+    if (playing) followStep();
     drawSelection();
     sim.prune(t);
     const stamp = pattern && hover ? { points: stampPoints(hover[0], hover[1]) } : null;

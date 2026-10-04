@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MusicBox } from '../src/audio/musicBox';
-import { WelcomeSound, welcomeGunTicks, welcomeLayers } from '../src/audio/welcomeSound';
+import { WelcomeSound, welcomeGunTicks, welcomeLayers, welcomeScore } from '../src/audio/welcomeSound';
 import { WELCOME_PRE_ADVANCE } from '../src/ui/welcomeScene';
 
 // A routing/scheduling spy, with no real AudioContext or audio device.
@@ -35,11 +35,17 @@ describe('welcome sound decisions', () => {
     expect(welcomeLayers('off')).toEqual({ pad: false, notes: false, chime: false, sfx: false });
   });
 
+  it('scores the six shots with I–V–vi–IV, a 100 bpm pulse and birth notes only in the close-up', () => {
+    expect([0, 2.5, 6, 8, 10.5, 13.5].map((t) => welcomeScore(t).chord)).toEqual([0, 0, 1, 2, 3, 4]);
+    expect([2.4, 2.5, 3.1, 3.7, 13.5].map((t) => welcomeScore(t).beat)).toEqual([-1, 0, 1, 2, -1]);
+    expect([10.4, 10.5, 13.4, 13.5].map((t) => welcomeScore(t).births)).toEqual([false, true, true, false]);
+  });
+
   it('staggered period-30 ticks are independent of frame/generation batches', () => {
     const start = WELCOME_PRE_ADVANCE;
     const whole = welcomeGunTicks(start, start + 90);
-    expect(whole.map(({ generation }) => generation - start)).toEqual([15, 30, 45, 60, 75, 90]);
-    expect(whole.map(({ gun }) => gun)).toEqual([1, 0, 1, 0, 1, 0]);
+    expect(whole.map(({ generation }) => generation - start)).toEqual([15, 15, 30, 30, 45, 45, 60, 60, 75, 75, 90, 90]);
+    expect(whole.map(({ gun }) => gun)).toEqual([1, 3, 0, 2, 1, 3, 0, 2, 1, 3, 0, 2]);
     const pieces = [welcomeGunTicks(start, start + 17), welcomeGunTicks(start + 17, start + 60), welcomeGunTicks(start + 60, start + 90)].flat();
     expect(pieces).toEqual(whole);
     expect(welcomeGunTicks(150, 150)).toEqual([]);
@@ -57,7 +63,12 @@ describe('welcome sound lifetime', () => {
   it('stops and disconnects every intro node on skip/close, including a whoosh', () => {
     const fixture = audioFixture();
     const sound = new WelcomeSound(fixture.audio, false);
-    sound.update(4.1, 153, []);
+    sound.update(2.5, 135, []);
+    sound.update(6, 177, []);
+    sound.update(8, 201, []);
+    sound.update(10.5, 231, [1]);
+    sound.update(13.5, 243, []);
+    sound.update(15.4, 266, []);
     sound.dispose();
     for (const node of fixture.nodes) {
       expect(node.disconnect).toHaveBeenCalled();

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Container } from 'pixi.js';
+import type { Container, Renderer } from 'pixi.js';
 import type { MusicBox } from '../src/audio/musicBox';
 import { Camera } from '../src/render/camera';
 import type { WorldView } from '../src/render/world';
@@ -8,7 +8,7 @@ import { WelcomeShow } from '../src/ui/welcomeShow';
 
 const spies = vi.hoisted(() => ({
   soundStart: vi.fn(), soundFinish: vi.fn(), soundStop: vi.fn(), syncMode: vi.fn(),
-  lensStart: vi.fn(), lensStop: vi.fn(),
+  lensStart: vi.fn(), lensStop: vi.fn(), creatureFail: false,
 }));
 vi.mock('../src/audio/welcomeSound', () => ({ WelcomeSound: class {
   constructor(...args: unknown[]) { spies.soundStart(...args); }
@@ -22,6 +22,18 @@ vi.mock('../src/ui/welcomeLens', () => ({ WelcomeLens: class {
   update() {}
   destroy() { spies.lensStop(); }
 } }));
+
+vi.mock('../src/ui/welcomeCast', () => ({
+  WELCOME_MOODS: [
+    { label: 'lives on', rule: '2 or 3 ~ lives on' }, { label: 'lonely', rule: 'fewer than 2 ~ lonely' },
+    { label: 'crowded', rule: 'more than 3 ~ crowded' }, { label: 'a new cell is born', rule: 'exactly 3 ~ a new cell' },
+  ],
+  welcomeFace: () => document.createElement('canvas'), welcomeCreature: () => {
+    if (spies.creatureFail) throw new Error('No renderer extraction');
+    return document.createElement('canvas');
+  },
+}));
+vi.mock('../src/ui/welcomeParticles', () => ({ WelcomeParticles: class { update() {} destroy() {} } }));
 
 // Minimal event/focus DOM for testing modal ownership without a browser dependency.
 type TestEvent = { target: FakeElement; key?: string; code?: string; repeat?: boolean; shiftKey?: boolean; stopped?: boolean; preventDefault: ReturnType<typeof vi.fn>; stopPropagation(): void };
@@ -87,7 +99,7 @@ function fixture(reduced = false, coarse = false) {
   const audio = { mode: 'all', enabled: true, cycleMode: vi.fn(() => { audio.mode = 'music'; }) };
   const show = new WelcomeShow({ sim, cam, playing: () => playing, following: () => following,
     setPlaying: (on) => { playing = on; }, setFollowing: (on) => { following = on; }, refreshStatus: vi.fn(),
-  }, { stage: {} as Container, view: {} as WorldView, audio: audio as unknown as MusicBox, soundChanged });
+  }, { stage: {} as Container, renderer: {} as Renderer, view: {} as WorldView, audio: audio as unknown as MusicBox, soundChanged });
   show.start(done);
   const button = (text: string) => {
     const found = body.querySelectorAll('button').find((button) => button.textContent === text);
@@ -103,23 +115,50 @@ function fixture(reduced = false, coarse = false) {
     state: () => ({ playing, following }) };
 }
 
-beforeEach(() => { vi.useFakeTimers(); vi.clearAllMocks(); });
+beforeEach(() => { vi.useFakeTimers(); vi.clearAllMocks(); spies.creatureFail = false; });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('welcome modal flow', () => {
-  it('waits at the gate without unlocking sound or running generations', () => {
+  it('runs a silent live creature scene behind the descriptive gate', () => {
     const f = fixture();
     f.show.update(50000);
     expect(spies.soundStart).not.toHaveBeenCalled();
-    expect(f.sim.generation).toBe(120);
+    expect(f.sim.generation).toBeGreaterThan(120);
     expect(f.state()).toEqual({ playing: false, following: false });
     expect(f.hud.inert && f.stage.inert).toBe(true);
     expect(activeElement).toBe(f.button('▶ tap to begin'));
+    expect(f.body.querySelectorAll('canvas')).toHaveLength(7);
   });
 
-  it.each(['Escape', 'skip'])('gate %s goes straight back to the untouched game', (action) => {
+  it('keeps the title usable when GPU portraits cannot be extracted', () => {
+    spies.creatureFail = true;
+    const f = fixture();
+    expect(f.body.querySelectorAll('p').map((p) => p.textContent)).toContain('meet the creatures swimming behind the title ~');
+    expect(f.body.querySelectorAll('canvas')).toHaveLength(4);
+    expect(activeElement).toBe(f.button('▶ tap to begin'));
+  });
+
+  it('freezes the title canvas for reduced motion and resets genesis after a long gate visit', () => {
+    const staticGate = fixture(true);
+    const cells = staticGate.sim.cells;
+    staticGate.show.update(50000);
+    expect(staticGate.sim.cells).toBe(cells);
+    expect(staticGate.show.renderTime(1000)).toBe(staticGate.show.renderTime(2000));
+    staticGate.button('skip').click(); staticGate.button('let me play').click(); vi.runAllTimers();
+    const live = fixture();
+    live.show.update(30000);
+    const gateCells = live.sim.cells;
+    live.button('▶ tap to begin').click();
+    expect(live.sim.cells).not.toBe(gateCells);
+    expect(live.sim.generation).toBe(120);
+    expect(live.cam.zoom).toBe(44);
+  });
+
+  it.each(['Escape', 'skip'])('gate %s offers choices without unlocking sound, then restores the untouched game', (action) => {
     const f = fixture();
     if (action === 'skip') f.button('skip').click(); else f.key(action);
+    expect(f.show.active).toBe(true);
+    f.button('let me play').click();
     vi.runAllTimers();
     expect(f.done).toHaveBeenCalledWith(false);
     expect(spies.soundStart).not.toHaveBeenCalled();
@@ -134,7 +173,7 @@ describe('welcome modal flow', () => {
     expect(f.key(key).preventDefault).toHaveBeenCalled();
     expect(spies.soundStart).toHaveBeenCalledOnce();
     expect(f.key(key, 'keyup').stopped).toBe(true);
-    f.show.update(4500);
+    f.show.update(8500);
     expect(spies.lensStart).toHaveBeenCalledOnce();
     f.button('skip').click();
     f.button('let me play').click();
@@ -142,14 +181,14 @@ describe('welcome modal flow', () => {
     expect(spies.soundStop).toHaveBeenCalledOnce();
   });
 
-  it.each([0.1, 3.9, 4.2, 5.9, 6.5, 8, 11.5])('skip at %s seconds lands on choices and cleans up before restoring the sandbox', (seconds) => {
+  it.each([0.1, 2.6, 5.9, 6, 7.9, 8, 9.8, 10.5, 12, 13.5, 15.8])('skip at %s seconds lands on choices and cleans up before restoring the sandbox', (seconds) => {
     const f = fixture();
     f.button('▶ tap to begin').click();
     f.show.update(seconds * 1000);
     f.key('Escape');
     expect(spies.soundFinish).toHaveBeenCalledOnce();
     expect(f.show.active).toBe(true);
-    expect(f.cam.zoom).toBe(40);
+    expect(f.cam.zoom).toBeLessThan(4);
     expect(f.sim.cells).not.toBe(f.cells);
     f.button('let me play').click();
     expect(spies.soundStop).toHaveBeenCalledOnce();
@@ -177,14 +216,14 @@ describe('welcome modal flow', () => {
 
   it('uses the dive on coarse pointers and measured slow frames', () => {
     const touch = fixture(false, true);
-    touch.button('▶ tap to begin').click(); touch.show.update(4500);
+    touch.button('▶ tap to begin').click(); touch.show.update(8500);
     expect(spies.lensStart).not.toHaveBeenCalled();
     touch.button('skip').click(); touch.button('let me play').click(); vi.runAllTimers();
     const slow = fixture();
     slow.button('▶ tap to begin').click();
     const start = performance.now();
     for (let ms = 50; ms <= 1100; ms += 50) slow.show.update(start + ms);
-    slow.show.update(start + 4500);
+    slow.show.update(start + 8500);
     expect(spies.lensStart).not.toHaveBeenCalled();
   });
 
@@ -193,13 +232,13 @@ describe('welcome modal flow', () => {
     const speaker = f.body.querySelectorAll('button').find((button) => button.classList.contains('welcome-speaker'))!;
     speaker.click();
     expect(f.audio.mode).toBe('music'); expect(f.soundChanged).toHaveBeenCalledOnce();
-    f.button('▶ tap to begin').click(); f.show.update(12000);
+    f.button('▶ tap to begin').click(); f.show.update(16000);
     expect(spies.lensStart).not.toHaveBeenCalled();
     f.button('let me play').click(); vi.runAllTimers();
     f.show.start(f.done);
     expect(activeElement).toBe(f.button('▶ tap to begin'));
     expect(spies.soundStart).toHaveBeenCalledOnce();
-    f.button('skip').click(); vi.runAllTimers();
+    f.button('skip').click(); f.button('let me play').click(); vi.runAllTimers();
     expect(f.sim.cells).toBe(f.cells);
   });
 });

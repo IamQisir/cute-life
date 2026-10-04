@@ -139,7 +139,7 @@ async function main() {
   const welcome = new WelcomeShow({
     sim, cam, playing: () => playing, following: () => following,
     setPlaying, setFollowing, refreshStatus,
-  }, { stage: app.stage, view, audio, soundChanged: () => hud.setSound(audio.mode) });
+  }, { stage: app.stage, renderer: app.renderer, view, audio, soundChanged: () => hud.setSound(audio.mode) });
   const onboarding = new Onboarding(() => mode, welcome);
 
   /** Shared entry point for the help button and the future title-cell action. */

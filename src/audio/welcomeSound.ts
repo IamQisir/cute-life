@@ -17,6 +17,19 @@ export function welcomeGunTicks(previous: number, current: number, guns: readonl
   return ticks.sort((a, b) => a.generation - b.generation || a.gun - b.gun);
 }
 
+// C → G → Am → F, resolving to C with the final pull-back.
+export const SCORE_CHORDS = [
+  [130.81, 164.81, 196], [98, 123.47, 146.83], [110, 130.81, 164.81],
+  [87.31, 110, 130.81], [130.81, 164.81, 196, 261.63],
+] as const;
+export function welcomeScore(seconds: number) {
+  return {
+    chord: seconds < 6 ? 0 : seconds < 8 ? 1 : seconds < 10.5 ? 2 : seconds < 13.5 ? 3 : 4,
+    beat: seconds >= 2.5 && seconds < 13.5 ? Math.floor((seconds - 2.5) / 0.6) : -1,
+    births: seconds >= 10.5 && seconds < 13.5,
+  };
+}
+
 type Source = OscillatorNode | AudioBufferSourceNode;
 type Voice = { sources: Source[]; nodes: AudioNode[]; end: number };
 
@@ -30,7 +43,8 @@ export class WelcomeSound {
   private pad: GainNode | null = null;
   private previousTime = 0;
   private previousGeneration = WELCOME_PRE_ADVANCE;
-  private nextNote = 6.5;
+  private nextNote = 10.5;
+  private previousBeat = -1;
   private finished = false;
   private tailTimer = 0;
 
@@ -46,7 +60,7 @@ export class WelcomeSound {
     this.music.connect(this.bus);
     this.effects.connect(this.bus);
     this.syncMode();
-    if (!reduced) this.drone();
+    if (!reduced) this.drone([130.81, 164.81, 196], 2.5);
   }
 
   syncMode() {
@@ -71,20 +85,25 @@ export class WelcomeSound {
     });
   }
 
-  private drone() {
+  private drone(chord: readonly number[], duration: number, swell = false) {
     const ctx = this.lease!.context, t = ctx.currentTime;
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass'; filter.frequency.value = 580;
+    if (this.pad) {
+      this.pad.gain.cancelScheduledValues(t);
+      this.pad.gain.setTargetAtTime(0, t, 0.18);
+    }
     const env = this.pad = ctx.createGain();
-    env.gain.setValueAtTime(0, t); env.gain.linearRampToValueAtTime(0.075, t + 1.5);
+    env.gain.setValueAtTime(0, t); env.gain.linearRampToValueAtTime(swell ? 0.09 : 0.045, t + (swell ? 1.5 : 0.45));
+    env.gain.linearRampToValueAtTime(0, t + duration);
     env.connect(filter).connect(this.music!);
-    const sources = [-6, 6].map((detune) => {
+    const sources = chord.flatMap((frequency) => [-5, 5].map((detune) => {
       const oscillator = ctx.createOscillator();
-      oscillator.type = 'triangle'; oscillator.frequency.value = 130.81; oscillator.detune.value = detune;
-      oscillator.connect(env); oscillator.start(t); oscillator.stop(t + 14);
+      oscillator.type = 'triangle'; oscillator.frequency.value = frequency; oscillator.detune.value = detune;
+      oscillator.connect(env); oscillator.start(t); oscillator.stop(t + duration);
       return oscillator;
-    });
-    this.retain(sources, [env, filter], 14);
+    }));
+    this.retain(sources, [env, filter], duration + 0.03);
   }
 
   private bell(frequency: number, gain: number, output = this.music!, duration = 1.6) {
@@ -123,29 +142,43 @@ export class WelcomeSound {
     this.retain([noise, pitch], [filter, env, pitchGain], duration + 0.03);
   }
 
-  update(seconds: number, generation: number, births: number[]) {
+  private pulse() {
+    const ctx = this.lease!.context, t = ctx.currentTime;
+    const oscillator = ctx.createOscillator(), env = ctx.createGain();
+    oscillator.frequency.setValueAtTime(92, t);
+    oscillator.frequency.exponentialRampToValueAtTime(38, t + 0.16);
+    env.gain.setValueAtTime(0.1, t);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    oscillator.connect(env).connect(this.music!);
+    oscillator.start(t); oscillator.stop(t + 0.24);
+    this.retain([oscillator], [env], 0.25);
+  }
+
+  update(seconds: number, generation: number, births: number[], gunCount: number = SHOWCASE_GUNS.length) {
     if (!this.lease || this.finished || this.reduced) return;
     this.clearVoices();
     this.syncMode();
     const layers = welcomeLayers(this.audio.mode);
-    if (seconds < 4 && layers.sfx) {
-      // One short tick per emitter; never replay a backlog of wall-clock sounds.
-      for (const tick of welcomeGunTicks(this.previousGeneration, generation).slice(-2)) {
+    const score = welcomeScore(seconds);
+    if (seconds >= 2.5 && seconds < WELCOME_FINALE && layers.sfx) {
+      for (const tick of welcomeGunTicks(this.previousGeneration, generation, SHOWCASE_GUNS.slice(0, gunCount)).slice(-2)) {
         this.bell(220 + tick.gun * 55, 0.035, this.effects!, 0.085);
       }
     }
-    if (this.previousTime < 4 && seconds >= 4 && seconds < WELCOME_ZOOM_END) this.whoosh(WELCOME_ZOOM_END - seconds);
-    if (this.previousTime < WELCOME_ZOOM_END && seconds >= WELCOME_ZOOM_END) {
-      if (layers.sfx) this.bell(330, 0.1, this.effects!, 0.24);
-      const t = this.lease.context.currentTime;
-      this.pad?.gain.cancelScheduledValues(t);
-      this.pad?.gain.setValueAtTime(0.075, t);
-      this.pad?.gain.linearRampToValueAtTime(0, t + 0.8);
+    for (const cue of [1.25, 6, 8, WELCOME_FINALE]) {
+      if (this.previousTime < cue && seconds >= cue && seconds - cue < 0.5) this.whoosh(cue === WELCOME_FINALE ? 1.5 : 0.35);
+    }
+    const previous = welcomeScore(this.previousTime);
+    if ((this.previousTime < 2.5 && seconds >= 2.5) || score.chord !== previous.chord) this.drone(SCORE_CHORDS[score.chord], score.chord === 4 ? 2.5 : 3.5, score.chord === 4);
+    if (score.beat >= 0 && score.beat !== this.previousBeat && seconds < WELCOME_FINALE) this.pulse();
+    this.previousBeat = score.beat;
+    if (this.previousTime < 15.4 && seconds >= 15.4) {
+      [523.25, 659.25, 783.99].forEach((frequency) => this.bell(frequency, 0.04));
     }
     if (seconds >= WELCOME_ZOOM_END && seconds < WELCOME_FINALE && seconds >= this.nextNote && births.length && layers.notes) {
       const key = births[generation % births.length];
       this.bell(noteFor(keyX(key), keyY(key)), 0.075);
-      this.nextNote = seconds + 0.42;
+      this.nextNote = seconds + 0.3;
     }
     this.previousGeneration = generation;
     this.previousTime = seconds;

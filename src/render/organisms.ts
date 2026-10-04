@@ -73,6 +73,13 @@ export class OrganismView {
     for (const m of MOODS) this.faces[m] = tex(drawFaceOnly(PALETTES[0], m, FACE_RES));
   }
 
+  /** Standalone portraits own their textures; dispose them after extraction. */
+  destroy() {
+    const textures = [...Object.values(this.faces), this.zTex, this.noteTex, this.hatch.texture];
+    this.root.destroy({ children: true, context: true });
+    textures.forEach((texture) => texture.destroy(true));
+  }
+
   private ensureClusters(sim: SimView) {
     if (this.clusterVersion === sim.version) return;
     this.clusters = sim.teamClusters ? sim.teamClusters() : findClusters(sim.cells);

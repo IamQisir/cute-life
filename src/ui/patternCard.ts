@@ -27,18 +27,35 @@ export function patternThumb(p: Pattern, cell: HTMLCanvasElement, size = 60): HT
   ctx.scale(2, 2);
   const ox = (size - w * unit) / 2;
   const oy = (size - h * unit) / 2;
+  // Big patterns shrink each cell to a couple of pixels: crisp dots read better
+  // than tiny blurred cell drawings.
+  const dots = unit < 5;
+  ctx.fillStyle = '#4f9a80';
   p.rows.forEach((row, y) =>
     [...row].forEach((ch, x) => {
-      if (ch === 'O') ctx.drawImage(cell, ox + x * unit - unit * 0.1, oy + y * unit - unit * 0.1, unit * 1.2, unit * 1.2);
+      if (ch !== 'O') return;
+      if (dots) {
+        ctx.beginPath();
+        ctx.arc(ox + (x + 0.5) * unit, oy + (y + 0.5) * unit, Math.max(0.6, unit * 0.45), 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.drawImage(cell, ox + x * unit - unit * 0.1, oy + y * unit - unit * 0.1, unit * 1.2, unit * 1.2);
+      }
     }),
   );
   return c;
 }
 
-export function patternCard(p: Pattern, cell: HTMLCanvasElement, h: CardHandlers, showCost = false): HTMLElement {
+export function patternCard(
+  p: Pattern,
+  cell: HTMLCanvasElement,
+  h: CardHandlers,
+  showCost = false,
+  tooltip?: string,
+): HTMLElement {
   const card = document.createElement('div');
   card.className = 'card';
-  card.title = 'click to select, or drag onto the board';
+  card.title = tooltip ? `${tooltip}\n(click to select, or drag onto the board)` : 'click to select, or drag onto the board';
   const label = document.createElement('div');
   label.textContent = p.name;
   card.append(patternThumb(p, cell), label);

@@ -1,8 +1,13 @@
-import { PATTERNS, type Pattern } from '../life/patterns';
+import { type Category, byCategory } from '../life/catalog';
+import type { Pattern } from '../life/patterns';
 import type { SoundMode } from '../audio/musicBox';
 import { WorldView } from '../render/world';
 import { type CardHandlers, patternCard } from './patternCard';
+import { isPaletteHidden, paletteSection, setPaletteHidden } from './paletteSections';
 import { type StampEntry, type StampSectionActions, stampSection } from './stamps';
+
+/** Sections open until the player decides otherwise: the most fun to try first. */
+const OPEN_BY_DEFAULT = new Set<Category>(['spaceship', 'gun', 'oscillator']);
 
 export interface HudActions {
   togglePlay(): void;
@@ -79,15 +84,27 @@ export class Hud {
     topRight.append(this.battleBtn, this.recordBtn, button('share', a.share), this.selectBtn, this.handBtn, this.soundBtn);
 
     const palette = el('div', 'palette');
-    palette.append(el('div', 'label', 'stamps'));
+    palette.classList.toggle('collapsed', isPaletteHidden());
+    const top = el('div', 'pal-top');
+    const toggle = button(isPaletteHidden() ? 'stamps ▸' : '◂', () => {
+      const hidden = !palette.classList.contains('collapsed');
+      palette.classList.toggle('collapsed', hidden);
+      toggle.textContent = hidden ? 'stamps ▸' : '◂';
+      setPaletteHidden(hidden);
+    }, 'pal-toggle');
+    top.append(el('div', 'label', 'stamps'), toggle);
+    palette.append(top);
     const cell = WorldView.portrait('happy', 0);
-    for (const p of PATTERNS) {
-      const card = patternCard(p, cell, {
-        ...a.cardDrag,
-        pick: () => a.pickPattern(card.classList.contains('on') ? null : p),
+    for (const group of byCategory()) {
+      const cards = group.entries.map((p) => {
+        const card = patternCard(p, cell, {
+          ...a.cardDrag,
+          pick: () => a.pickPattern(card.classList.contains('on') ? null : p),
+        }, false, `${p.fullName}: ${p.blurb}`);
+        this.cards.set(p, card);
+        return card;
       });
-      this.cards.set(p, card);
-      palette.append(card);
+      palette.append(paletteSection(group.category, group.label, cards.length, cards, OPEN_BY_DEFAULT.has(group.category)));
     }
     palette.append(this.customArea);
 
@@ -149,8 +166,8 @@ export class Hud {
   /** Rebuild the "my stamps" section of the sandbox palette. */
   setStamps(entries: StampEntry[], a: StampSectionActions) {
     const cell = WorldView.portrait('happy', 0);
-    const { nodes, cards } = stampSection(entries, cell, a, false);
-    this.customArea.replaceChildren(...nodes);
+    const { nodes, cards } = stampSection(entries, cell, a, false, false);
+    this.customArea.replaceChildren(paletteSection('mine', 'my stamps', entries.length, nodes, true));
     this.customCards = cards;
     this.setPattern(this.picked);
   }

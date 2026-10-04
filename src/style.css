@@ -376,6 +376,36 @@ html, body {
   .result-title { font-size: 42px; }
 }
 
+/* ---- palette sections ------------------------------------------------- */
+.palette { display: flex !important; flex-direction: column; gap: 6px; width: 196px; }
+.pal-top { display: flex; align-items: center; justify-content: space-between; padding: 0 2px; }
+.pal-top .label { text-align: left; }
+.btn.pal-toggle { font-size: 15px; padding: 1px 9px; }
+.pal-section { display: flex; flex-direction: column; gap: 4px; }
+.pal-header {
+  font: inherit;
+  font-size: 17px;
+  color: var(--ink);
+  background: none;
+  border: none;
+  border-bottom: 1.4px dashed rgba(122, 106, 92, 0.45);
+  text-align: left;
+  padding: 2px 2px 3px;
+  cursor: pointer;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.pal-header:hover { color: var(--red); }
+.pal-arrow { display: inline-block; transition: transform 0.15s ease; color: var(--ink-soft); }
+.pal-section.open .pal-arrow { transform: rotate(90deg); }
+.pal-body { display: none; grid-template-columns: repeat(2, 84px); gap: 8px; padding: 2px 0 6px; }
+.pal-section.open .pal-body { display: grid; }
+.pal-body .label { display: none; }
+/* Collapsed: only a small tab stays on screen. */
+.palette.collapsed { width: auto; overflow: visible; }
+.palette.collapsed .pal-section, .palette.collapsed .custom-area, .palette.collapsed .pal-top .label { display: none; }
+
 /* ---- custom stamps ---------------------------------------------------- */
 .selection-menu {
   position: fixed;
@@ -395,10 +425,9 @@ html, body {
 .selection-count { font-size: 15px; color: var(--ink-soft); }
 .custom-area { display: contents; }
 /* Two columns so built-in and custom stamps fit without scrolling. */
-.palette, .battle-palette { display: grid; align-content: start; }
-.palette { grid-template-columns: repeat(2, 84px); }
+.battle-palette { display: grid; align-content: start; }
 .battle-palette { grid-template-columns: repeat(2, 76px); }
-.palette .label, .battle-palette .label { grid-column: 1 / -1; }
+.battle-palette .label { grid-column: 1 / -1; }
 .palette .card, .battle-palette .card { transform: none; }
 .card { position: relative; }
 .card-tools {
@@ -466,6 +495,12 @@ html, body {
     padding: 4px 12px;
   }
   .palette .label { display: none; }
+  .palette { flex-direction: row !important; width: auto; align-items: center; }
+  .pal-top { display: none; }
+  .pal-section { flex-direction: row; align-items: center; flex: 0 0 auto; }
+  .pal-header { border-bottom: none; white-space: nowrap; font-size: 15px; }
+  .pal-section.open .pal-body { display: flex; }
+  .pal-body { gap: 6px; padding: 0; }
   .card { flex: 0 0 auto; width: 62px; padding: 4px 2px 0; }
   .card canvas { width: 40px !important; height: 40px !important; }
   .card div { font-size: 14px; }

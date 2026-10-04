@@ -161,10 +161,11 @@ export function stampSection(
   cell: HTMLCanvasElement,
   a: StampSectionActions,
   showCost: boolean,
+  withLabel = true,
 ): { nodes: HTMLElement[]; cards: Map<Pattern, HTMLElement> } {
   const nodes: HTMLElement[] = [];
   const cards = new Map<Pattern, HTMLElement>();
-  if (entries.length || a.importStamp) nodes.push(el('div', 'label', 'my stamps'));
+  if (withLabel && (entries.length || a.importStamp)) nodes.push(el('div', 'label', 'my stamps'));
   for (const { id, pattern } of entries) {
     const card = patternCard(pattern, cell, a.cards, showCost);
     card.classList.add('custom');

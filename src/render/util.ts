@@ -15,7 +15,10 @@ export function cellHash(x: number, y: number): number {
 export class SpritePool {
   private sprites: Sprite[] = [];
   private used = 0;
+  private visible = 0;
   constructor(private layer: Container) {}
+
+  get drawn() { return this.used; }
 
   begin() {
     this.used = 0;
@@ -39,7 +42,8 @@ export class SpritePool {
   }
 
   end() {
-    for (let i = this.used; i < this.sprites.length; i++) this.sprites[i].visible = false;
+    for (let i = this.used; i < this.visible; i++) this.sprites[i].visible = false;
+    this.visible = this.used;
   }
 }
 

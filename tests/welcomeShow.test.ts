@@ -222,7 +222,7 @@ describe('welcome modal flow', () => {
     const slow = fixture();
     slow.button('▶ tap to begin').click();
     const start = performance.now();
-    for (let ms = 50; ms <= 1100; ms += 50) slow.show.update(start + ms);
+    for (let ms = 50; ms <= 8500; ms += 50) slow.show.update(start + ms);
     slow.show.update(start + 8500);
     expect(spies.lensStart).not.toHaveBeenCalled();
   });

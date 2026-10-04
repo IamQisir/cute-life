@@ -1,10 +1,12 @@
-import { Container, Graphics, type Texture, TilingSprite } from 'pixi.js';
+import { CanvasSource, Container, Graphics, Rectangle, Sprite, Texture, TilingSprite } from 'pixi.js';
 import { keyX, keyY } from '../life/engine';
 import type { SimView } from '../sim';
 import type { Camera } from './camera';
 import { MOODS, type Mood, PALETTES, TEAM_PALETTES, TEX_SIZE, drawBud, drawCell, drawDot, drawPaper } from './cellArt';
 import { OrganismView } from './organisms';
 import { SpritePool, cellHash, tex } from './util';
+import { rasterDots, type DotRaster } from './dotBitmap';
+import { perf } from './perf';
 
 export { cellHash };
 
@@ -63,9 +65,16 @@ export interface StampPreview {
   invalid?: boolean;
 }
 
+export interface WorldViewOptions {
+  dotBitmap?: boolean;
+  /** Fixed-clock scenes can cache a padded camera selection until their next generation. */
+  visibleOrganisms?: boolean;
+}
+
 export class WorldView {
   readonly root = new Container();
   private paper: TilingSprite;
+  private closeUp: boolean;
   private creases = new Graphics();
   private grid = new Graphics();
   private budPool: SpritePool;
@@ -78,9 +87,28 @@ export class WorldView {
   /** Drawn above the grid and below cells (e.g. the battle arena). */
   readonly underlay = new Container();
   private organisms: OrganismView | null;
+  /** Default off. To opt the sandbox in later, pass { dotBitmap: true } as constructor option. */
+  dotBitmapEnabled: boolean;
+  // Default off retains full creature groups while a paused sandbox camera is panned.
+  visibleOrganismsOnly: boolean;
+  private dotSprite = new Sprite(Texture.EMPTY);
+  private dotCanvas: HTMLCanvasElement | null = null;
+  private dotTexture: Texture | null = null;
+  private dotRaster: DotRaster | null = null;
+  private dotVersion = -1;
+  private dotSim: SimView | null = null;
+  get spritesDrawn() {
+    return (this.cellsRoot.visible ? this.budPool.drawn + this.cellPool.drawn + this.fadePool.drawn : 0)
+      + this.stampPool.drawn + (this.dotSprite.visible ? 1 : 0)
+      + (this.organisms?.root.visible ? this.organisms.spritesDrawn : 0);
+  }
 
   /** A close-up reuses artwork and omits the unused organism renderer. */
-  constructor(closeUpSource?: WorldView) {
+  constructor(closeUpSource?: WorldView, options: WorldViewOptions = {}) {
+    this.closeUp = !!closeUpSource;
+    this.dotBitmapEnabled = options.dotBitmap ?? false;
+    this.visibleOrganismsOnly = options.visibleOrganisms ?? false;
+    this.dotSprite.visible = false;
     this.tx = closeUpSource?.tx ?? buildTextures();
     this.organisms = closeUpSource ? null : new OrganismView();
     this.paper = new TilingSprite({ texture: closeUpSource?.paper.texture ?? tex(drawPaper()), width: 1, height: 1 });
@@ -89,7 +117,7 @@ export class WorldView {
     const fadeLayer = new Container();
     const stampLayer = new Container();
     this.cellsRoot.addChild(budLayer, fadeLayer, cellLayer);
-    this.root.addChild(this.paper, this.creases, this.grid, this.underlay, ...(this.organisms ? [this.organisms.root] : []), this.cellsRoot, stampLayer);
+    this.root.addChild(this.paper, this.creases, this.grid, this.underlay, ...(this.organisms ? [this.organisms.root] : []), this.dotSprite, this.cellsRoot, stampLayer);
     this.budPool = new SpritePool(budLayer);
     this.cellPool = new SpritePool(cellLayer);
     this.fadePool = new SpritePool(fadeLayer);
@@ -98,7 +126,19 @@ export class WorldView {
 
   /** Shared artwork survives; only this view's containers/sprites/graphics die. */
   destroy() {
+    this.releaseDotBitmap();
     this.root.destroy({ children: true, context: true });
+  }
+
+  /** Release the show bitmap's CPU/GPU storage when returning to the default renderer. */
+  releaseDotBitmap() {
+    this.dotSprite.visible = false;
+    this.dotSprite.texture = Texture.EMPTY;
+    this.dotTexture?.destroy(true);
+    if (this.dotCanvas) { this.dotCanvas.width = this.dotCanvas.height = 1; }
+    this.dotCanvas = this.dotRaster = this.dotTexture = null;
+    this.dotSim = null;
+    this.dotVersion = -1;
   }
 
   /** Canvas of a happy cell, for use in the DOM (icons, decorations). */
@@ -167,7 +207,44 @@ export class WorldView {
     g.stroke({ width: 1.4, color: 0x8a7d6c, alpha: 0.34 * alpha });
   }
 
+  private updateDots(sim: SimView, cam: Camera, alpha: number) {
+    if (this.dotVersion !== sim.version || this.dotSim !== sim || !this.dotRaster) {
+      const colours = PALETTES.map((p) => ({ outline: parseInt(p.outline.slice(1), 16), nucleus: parseInt(p.nucleus.slice(1), 16) }));
+      const teams = [TEAM_PALETTES[1], TEAM_PALETTES[2]].map((p) => ({ outline: parseInt(p.outline.slice(1), 16), nucleus: parseInt(p.nucleus.slice(1), 16) }));
+      const raster = rasterDots(sim.cells, (k) => {
+        const team = sim.teamOf?.(k);
+        return team ? teams[team - 1] : colours[Math.floor((cellHash(keyX(k), keyY(k)) % TEAM_BASE) / VARIANTS_PER_PALETTE)];
+      }, cam.zoom);
+      if (!this.dotCanvas) this.dotCanvas = document.createElement('canvas');
+      if (!this.dotTexture) {
+        this.dotTexture = new Texture({
+          source: new CanvasSource({ resource: this.dotCanvas, resolution: 1, scaleMode: 'nearest', autoGenerateMipmaps: false }),
+          frame: new Rectangle(0, 0, 1, 1), dynamic: true,
+        });
+        this.dotSprite.texture = this.dotTexture;
+      }
+      // Keep backing storage stable as edge oscillators change the bounding box.
+      // Only grow in 128px blocks; the dynamic frame clips the current tight raster.
+      this.dotTexture.source.resize(Math.max(this.dotTexture.source.width, Math.ceil(raster.width / 128) * 128),
+        Math.max(this.dotTexture.source.height, Math.ceil(raster.height / 128) * 128));
+      this.dotTexture.frame.width = raster.width;
+      this.dotTexture.frame.height = raster.height;
+      this.dotCanvas.getContext('2d')!.putImageData(new ImageData(raster.data, raster.width, raster.height), 0, 0);
+      this.dotTexture.source.update();
+      this.dotTexture.update();
+      this.dotRaster = raster;
+      this.dotVersion = sim.version;
+      this.dotSim = sim;
+    }
+    const raster = this.dotRaster;
+    this.dotSprite.position.set(...cam.toScreen(raster.x, raster.y));
+    this.dotSprite.scale.set(cam.zoom / raster.pixelsPerCell);
+    this.dotSprite.alpha = alpha;
+  }
+
   update(now: number, sim: SimView, cam: Camera, stamp: StampPreview | null, showBuds: boolean, viewport?: { left: number; top: number; right: number; bottom: number }) {
+    const timing = perf.start();
+    if (perf.enabled && !this.closeUp) perf.cells = sim.cells.size;
     this.paper.tilePosition.set(-cam.x * cam.zoom, -cam.y * cam.zoom);
     this.drawGrid(cam);
 
@@ -183,13 +260,16 @@ export class WorldView {
     const cellAlpha = creatures
       ? Math.max(0, Math.min(1, (z - creatures.lo) / (creatures.hi - creatures.lo)))
       : individuals || dots ? 1 : faces ? Math.min(1, (z - FADE_LO) / (FADE_HI - FADE_LO)) : 0;
+    const bitmap = this.dotBitmapEnabled && !faces && cellAlpha > 0;
+    this.dotSprite.visible = bitmap;
+    if (bitmap) this.updateDots(sim, cam, cellAlpha);
     this.cellsRoot.alpha = cellAlpha;
-    this.cellsRoot.visible = cellAlpha > 0;
+    this.cellsRoot.visible = cellAlpha > 0 && !bitmap;
     const orgAlpha = creatures ? 1 - cellAlpha : individuals || dots ? 0 : 1 - cellAlpha;
     if (this.organisms) {
       this.organisms.root.visible = orgAlpha > 0;
       this.organisms.root.alpha = orgAlpha;
-      if (orgAlpha > 0) this.organisms.update(now, sim, cam);
+      if (orgAlpha > 0) this.organisms.update(now, sim, cam, this.visibleOrganismsOnly);
     }
     const [wx0, wy0] = cam.toWorld((viewport?.left ?? 0) - z, (viewport?.top ?? 0) - z);
     const [wx1, wy1] = cam.toWorld((viewport?.right ?? cam.w) + z, (viewport?.bottom ?? cam.h) + z);
@@ -223,7 +303,7 @@ export class WorldView {
 
     this.cellPool.begin();
     // Skip per-cell work entirely while organisms have fully taken over.
-    for (const k of cellAlpha > 0 ? sim.cells : NONE) {
+    for (const k of cellAlpha > 0 && !bitmap ? sim.cells : NONE) {
       const x = keyX(k);
       const y = keyY(k);
       if (!inView(x, y)) continue;
@@ -265,7 +345,7 @@ export class WorldView {
 
     // Fading cells drift up and dissolve.
     this.fadePool.begin();
-    for (const f of cellAlpha > 0 ? sim.fading : NONE) {
+    for (const f of cellAlpha > 0 && !bitmap ? sim.fading : NONE) {
       const t = (now - f.t0) / anim;
       if (t < 0 || t >= 1) continue;
       const x = keyX(f.k);
@@ -295,6 +375,8 @@ export class WorldView {
       }
     }
     this.stampPool.end();
+    if (perf.enabled) perf.sprites += this.spritesDrawn;
+    if (!this.closeUp) perf.end('world update', timing);
   }
 }
 

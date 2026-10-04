@@ -2,7 +2,7 @@ import type { Container, Renderer } from 'pixi.js';
 import { MusicBox } from '../audio/musicBox';
 import { WelcomeSound } from '../audio/welcomeSound';
 import type { WorldView } from '../render/world';
-import { buds, neighborCounts, type Cells } from '../life/engine';
+import { buds, neighborCounts, step, fromList, type Cells } from '../life/engine';
 import { welcomeCreature, welcomeFace, WELCOME_MOODS } from './welcomeCast';
 import { WelcomeParticles } from './welcomeParticles';
 import { WELCOME_CARD, WELCOME_LINES } from './onboardingText';
@@ -12,6 +12,10 @@ import { borrowSandbox, type WelcomeHost } from './welcomeSandbox';
 import { WelcomeLens } from './welcomeLens';
 import { buildTitleScene, buildWelcomeScene, welcomePattern, WELCOME_GENESIS, WELCOME_PRE_ADVANCE, WELCOME_GEN_PER_SEC } from './welcomeScene';
 import { welcomeBeat, welcomeCamera, welcomeLensTimeline, welcomeUsesDive, WELCOME_SECONDS, WELCOME_ZOOM_END, WELCOME_SHOTS, welcomeTitleCamera, welcomeGeneration, type WelcomeTransition } from './welcomeTimeline';
+import { WelcomeBake } from './welcomeBakeClient';
+import { applyBakedFrame } from './welcomeBake';
+import { WelcomeQuality } from './welcomeQuality';
+import { perf } from '../render/perf';
 import './welcomeShow.css';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string) {
@@ -41,7 +45,6 @@ export class WelcomeShow {
   private gateSteps = 0;
   private genesisInserted = 0;
   private small = false;
-  private scene: Cells = new Set();
   private particles: WelcomeParticles | null = null;
   private steps = 0;
   private beat = -1;
@@ -53,8 +56,11 @@ export class WelcomeShow {
   private lens: WelcomeLens | null = null;
   private sound: WelcomeSound | null = null;
   private lastFrame = 0;
-  private sampleMs = 0;
-  private sampleCount = 0;
+  private bake: WelcomeBake | null = null;
+  private quality = new WelcomeQuality((message) => perf.log(message));
+  private savedBitmap = false;
+  private savedVisibleOrganisms = false;
+  private previousSeconds = 0;
   private frozenAt = 0;
   private restore: (() => void) | null = null;
   private done: (tour: boolean) => void = () => {};
@@ -125,12 +131,17 @@ export class WelcomeShow {
     this.done = done;
     this.final = this.closing = false;
     this.gated = true;
-    this.steps = this.sampleMs = this.sampleCount = 0;
+    this.steps = this.previousSeconds = 0;
+    this.quality = new WelcomeQuality((message) => perf.log(message));
     this.beat = -1;
     this.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.transition = welcomeUsesDive(this.host.cam.w, this.host.cam.h, matchMedia('(pointer: coarse)').matches) ? 'dive' : 'lens';
     this.small = this.transition === 'dive';
-    this.scene = buildWelcomeScene(this.small);
+    this.bake = new WelcomeBake(this.small, (message) => perf.log(message));
+    this.savedBitmap = this.presentation.view.dotBitmapEnabled;
+    this.presentation.view.dotBitmapEnabled = true;
+    this.savedVisibleOrganisms = this.presentation.view.visibleOrganismsOnly;
+    this.presentation.view.visibleOrganismsOnly = true;
     this.restore = borrowSandbox(this.host, buildTitleScene());
     this.host.sim.animMs = 225;
     this.gateAt = performance.now();
@@ -205,18 +216,39 @@ export class WelcomeShow {
 
   private begin() {
     if (!this.gated || this.closing) return;
-    // Synchronous user gesture is required by Safari as well as Chrome.
+    // Build a missing initial snapshot synchronously, before starting the 16s clock.
+    // Sound still unlocks in the original user-gesture stack (including Safari).
+    this.selectScene(this.small, 0, performance.now());
     this.sound = new WelcomeSound(this.presentation.audio, this.reduced);
     this.gated = false;
     this.overlay?.classList.remove('welcome-gated');
     this.startAt = this.lastFrame = this.frozenAt = performance.now();
-    this.setScene(this.scene);
     this.steps = this.genesisInserted = 0;
     if (!this.reduced) this.particles = new WelcomeParticles(this.presentation.stage);
     if (this.reduced) {
       Object.assign(this.host.cam, welcomeCamera(WELCOME_SECONDS, this.host.cam.w, this.host.cam.h));
       this.finish();
     } else this.update(this.startAt);
+  }
+
+  private selectScene(small: boolean, generation: number, now: number) {
+    this.small = small;
+    this.host.sim.animMs = 900 / WELCOME_GEN_PER_SEC;
+    const baked = this.bake?.get(small, generation);
+    if (baked) {
+      applyBakedFrame(this.host.sim, baked, now, true);
+    } else {
+      // Begin never waits: without a ready snapshot use the original deterministic live path.
+      let cells = buildWelcomeScene(small);
+      if (generation) {
+        cells = new Set([...cells, ...fromList(welcomePattern('rpentomino', WELCOME_GENESIS.x, WELCOME_GENESIS.y))]);
+        for (let i = 0; i < generation; i++) cells = step(cells);
+      }
+      this.setScene(cells);
+      this.host.sim.generation = WELCOME_PRE_ADVANCE + generation;
+      perf.log(`live fallback: ${small ? 'small' : 'full'} frame ${generation}`);
+    }
+    this.steps = generation;
   }
 
   private setScene(cells: Cells) {
@@ -240,32 +272,36 @@ export class WelcomeShow {
         this.setScene(buildTitleScene()); this.host.sim.animMs = 225; this.gateAt = now; this.gateSteps = 0;
       }
       const seconds = (now - this.gateAt) / 1000;
+      const timing = perf.start();
+      if (perf.enabled) perf.quality = 'welcome title';
       const wanted = Math.floor(seconds * 4);
       for (let i = 0; this.gateSteps < wanted && i < 2; i++, this.gateSteps++) this.host.sim.advance(now);
       if (wanted - this.gateSteps > 2) this.gateSteps = wanted;
       this.host.sim.prune(now);
       Object.assign(this.host.cam, welcomeTitleCamera(seconds));
+      perf.end('sim/bake playback', timing);
       return;
     }
     const seconds = Math.min(WELCOME_SECONDS, Math.max(0, (now - this.startAt) / 1000));
     const elapsed = now - this.lastFrame;
-    // Ignore background-tab gaps; average real frame cadence during the first second.
-    if (seconds <= 1 && elapsed > 0 && !document.hidden) {
-      this.sampleMs += elapsed; this.sampleCount++;
-    }
     this.lastFrame = now;
-    if (seconds < 2.5 && welcomeUsesDive(this.host.cam.w, this.host.cam.h, matchMedia('(pointer: coarse)').matches,
-      seconds >= 1 && this.sampleCount ? this.sampleMs / this.sampleCount : 0)) {
-      this.transition = 'dive';
-      if (!this.small) {
-        this.small = true;
-        this.scene = buildWelcomeScene(true);
-        this.setScene(this.scene); this.steps = this.genesisInserted = 0;
-      }
+    const simTiming = perf.start();
+    const oldLevel = this.quality.level;
+    const level = this.quality.update(seconds, elapsed, document.hidden);
+    if (level >= 1 && this.particles) { this.particles.destroy(); this.particles = null; }
+    const cut = WELCOME_SHOTS.some((shot) => shot.cut && this.previousSeconds < shot.start && seconds >= shot.start);
+    this.previousSeconds = seconds;
+    // A cut invalidates the padded cluster selection even if no generation changed.
+    if (cut) this.host.sim.version++;
+    if (level >= 2 && oldLevel < 2 && !this.small) {
+      this.selectScene(true, this.steps, now);
+      this.genesisInserted = 5;
     }
+    if (level >= 3) { this.transition = 'dive'; this.lens?.destroy(); this.lens = null; }
+    if (perf.enabled) perf.quality = `welcome Q${level} / ${this.small ? 'small' : 'full'} / ${this.transition}`;
     const frame = welcomeLensTimeline(seconds, this.host.cam.w, this.host.cam.h, this.transition);
     Object.assign(this.host.cam, frame.main);
-    // Bound catch-up after dropped frames / background tabs; discard excess debt.
+    // Bound catch-up after dropped frames / background tabs to four generations/frame.
     const seed = welcomePattern('rpentomino', WELCOME_GENESIS.x, WELCOME_GENESIS.y);
     const visible = Math.min(seed.length, Math.max(0, Math.floor((seconds - 0.12) / 0.18) + 1));
     if (visible > this.genesisInserted) {
@@ -275,14 +311,21 @@ export class WelcomeShow {
     this.host.sim.animMs = seconds >= WELCOME_ZOOM_END && seconds < 13.5 ? 225 : 900 / WELCOME_GEN_PER_SEC;
     const wanted = welcomeGeneration(seconds);
     const births: number[] = [];
-    for (let i = 0; this.steps < wanted && i < 4; i++, this.steps++) births.push(...this.host.sim.advance(now));
-    if (wanted - this.steps > 4) this.steps = wanted;
+    for (let i = 0; this.steps < wanted && i < 4; i++, this.steps++) {
+      const baked = this.bake?.get(this.small, this.steps + 1);
+      births.push(...(baked ? applyBakedFrame(this.host.sim, baked, now) : this.host.sim.advance(now)));
+    }
     this.host.sim.prune(now);
+    perf.end('sim/bake playback', simTiming);
     this.sound?.update(seconds, this.host.sim.generation, births, this.small ? 2 : 4);
+    const particleTiming = perf.start();
     this.particles?.update(now, seconds, births, this.host.cam);
+    perf.end('particles', particleTiming);
+    const lensTiming = perf.start();
     if (frame.lensVisible && !this.lens) this.lens = new WelcomeLens(this.presentation.stage, this.presentation.view);
     this.lens?.update(now, this.host.sim, this.host.cam.w, this.host.cam.h, frame);
     if (seconds >= WELCOME_ZOOM_END + 0.15) { this.lens?.destroy(); this.lens = null; }
+    perf.end('lens', lensTiming);
     this.speedLines.style.opacity = String(frame.speedAlpha);
     this.flash.style.opacity = String(frame.flashAlpha);
     const beat = welcomeBeat(seconds);
@@ -339,8 +382,9 @@ export class WelcomeShow {
     if (this.gated) {
       this.gated = false;
       this.overlay?.classList.remove('welcome-gated');
-      this.setScene(this.scene);
+      this.selectScene(this.small, 0, performance.now());
     }
+    this.bake?.destroy(); this.bake = null;
     this.final = true;
     this.frozenAt = performance.now();
     this.lens?.destroy(); this.lens = null;
@@ -364,6 +408,9 @@ export class WelcomeShow {
     this.overlay?.classList.add('welcome-closing');
     document.body.classList.add('welcome-leaving');
     window.setTimeout(() => {
+      this.presentation.view.dotBitmapEnabled = this.savedBitmap;
+      this.presentation.view.visibleOrganismsOnly = this.savedVisibleOrganisms;
+      if (!this.savedBitmap) this.presentation.view.releaseDotBitmap?.();
       this.restore?.(); this.restore = null;
       this.overlay?.remove(); this.overlay = null;
       this.backgrounds.forEach(({ node: el, inert }) => { el.inert = inert; });

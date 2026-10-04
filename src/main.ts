@@ -24,6 +24,7 @@ import { Camera } from './render/camera';
 import { type FollowTarget, followTarget } from './render/follow';
 import { TerritoryView } from './render/territoryView';
 import { WorldView } from './render/world';
+import { perf } from './render/perf';
 import { fromHash, toHash } from './share/link';
 import { Recorder, type Recording } from './share/recorder';
 import { Sim } from './sim';
@@ -55,6 +56,18 @@ async function main() {
     autoDensity: true,
   });
   stage.appendChild(app.canvas);
+  perf.init();
+  // Measure the actual synchronous Pixi render call (CPU submission, not GPU completion).
+  if (perf.enabled) {
+    const render = app.renderer.render.bind(app.renderer);
+    app.renderer.render = ((...args: unknown[]) => {
+      const timing = perf.start();
+      const result = Reflect.apply(render, app.renderer, args);
+      perf.end('Pixi render', timing);
+      perf.finish(performance.now());
+      return result;
+    }) as typeof app.renderer.render;
+  }
 
   const sim = new Sim();
   const cam = new Camera();
@@ -828,6 +841,11 @@ async function main() {
 
   app.ticker.add(() => {
     const t = performance.now();
+    perf.begin(t);
+    if (perf.enabled) {
+      perf.cells = (mode === 'battle' && !welcome.active ? battle.sim : sim).cells.size;
+      if (!welcome.active) perf.quality = mode;
+    }
     if (welcome.active) {
       welcome.update(t);
       selectionGfx.clear();
@@ -838,10 +856,14 @@ async function main() {
     }
     if (playing && t - lastStep >= 1000 / genPerSec) {
       lastStep = t;
+      const timing = perf.start();
       advance();
+      perf.end('sim/bake playback', timing);
     }
     if (mode === 'battle') {
+      const timing = perf.start();
       battle.update(t);
+      perf.end('sim/bake playback', timing);
       selectionGfx.clear();
       territoryView.update(cam, battle.sim);
       arenaView.update(cam, battle.layout(), battle.arenaState());

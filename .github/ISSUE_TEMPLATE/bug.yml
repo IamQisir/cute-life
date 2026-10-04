@@ -1,0 +1,50 @@
+name: 🐛 Bug report
+description: Something looks or behaves wrong
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping the little cells! 🌱
+        Tip: press **share** in the game and paste the link below, so we can open exactly what you saw.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: And what did you expect instead?
+      placeholder: When I zoom out, the glider turns into a blob instead of a bug.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Stamp a glider
+        2. Press play
+        3. Zoom out
+  - type: input
+    id: link
+    attributes:
+      label: Share link
+      description: Press **share** in the game and paste the link here.
+      placeholder: https://life.chyisell.com/#v=1&p=...
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      options: [Chrome, Safari, Firefox, Edge, Other]
+    validations:
+      required: true
+  - type: dropdown
+    id: device
+    attributes:
+      label: Device
+      options: [Desktop / laptop, Phone, Tablet]
+    validations:
+      required: true
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshot or video
+      description: Optional. Drag files here, or use the game's **record** button.

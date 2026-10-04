@@ -35,6 +35,10 @@ ends as soon as one side wilts. Zoom in to see the individual cells. Play the
 AI (1-5 stars), send a **challenge link** to a friend, or share a **replay
 link** of any battle.
 
+The sandbox palette has 46 famous structures from LifeWiki in collapsible
+categories (still lifes, oscillators, spaceships, methuselahs, guns, puffers &
+rakes, infinite growth, reflectors): click or drag one in to try it.
+
 Stamps: press **select** and drag a box over some cells to save them as your
 own stamp, or **+ import** RLE (e.g. from LifeWiki). Your stamps appear in the
 sandbox and battle palettes (saved in this browser) and can be shared as a link.
@@ -68,3 +72,9 @@ URL params for demos: `?play`, `?sprinkle`, `?zoom=8`.
 Fonts: [Caveat](https://fonts.google.com/specimen/Caveat) and
 [Patrick Hand](https://fonts.google.com/specimen/Patrick+Hand), SIL Open Font
 License 1.1, self-hosted via [Fontsource](https://fontsource.org).
+
+Patterns: the famous structures in `src/life/catalog/` are RLE files from the
+[LifeWiki](https://conwaylife.com/wiki/) pattern collection (author and source
+kept in each file's `#O` / `#C` lines), mirrored by
+[copy.sh/life](https://copy.sh/life/). Each one's behaviour (period, speed,
+emitted gliders) is verified against this engine in `tests/catalog.test.ts`.

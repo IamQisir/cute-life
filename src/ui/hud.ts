@@ -85,17 +85,17 @@ export class Hud {
 
     const palette = el('div', 'palette');
     palette.classList.toggle('collapsed', isPaletteHidden());
-    const top = el('div', 'pal-top');
-    // Only the arrow flips, so the button keeps its size and place.
-    const toggle = button(isPaletteHidden() ? '▸' : '◂', () => {
+    // The "stamps" title itself folds the whole palette (arrow like the sections).
+    const top = el('button', 'pal-top');
+    top.append(el('span', 'pal-arrow', '▸'), el('span', 'label', 'stamps'));
+    top.title = 'show / hide stamps';
+    top.addEventListener('click', (e) => {
+      e.stopPropagation();
+      top.blur();
       const hidden = !palette.classList.contains('collapsed');
       palette.classList.toggle('collapsed', hidden);
-      toggle.textContent = hidden ? '▸' : '◂';
-      toggle.title = hidden ? 'show stamps' : 'hide stamps';
       setPaletteHidden(hidden);
-    }, 'pal-toggle');
-    toggle.title = isPaletteHidden() ? 'show stamps' : 'hide stamps';
-    top.append(el('div', 'label', 'stamps'), toggle);
+    });
     palette.append(top);
     const cell = WorldView.portrait('happy', 0);
     for (const group of byCategory()) {

@@ -378,9 +378,21 @@ html, body {
 
 /* ---- palette sections ------------------------------------------------- */
 .palette { display: flex !important; flex-direction: column; gap: 6px; width: 196px; }
-.pal-top { display: flex; align-items: center; justify-content: space-between; padding: 0 2px; }
-.pal-top .label { text-align: left; }
-.btn.pal-toggle { font-size: 15px; padding: 1px 0; width: 32px; text-align: center; }
+.pal-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-soft);
+  text-align: left;
+}
+.pal-top .label { text-align: left; font-size: 24px; }
+.pal-top:hover, .pal-top:hover .label { color: var(--red); }
+.pal-top .pal-arrow { transform: rotate(90deg); }
+.palette.collapsed .pal-top .pal-arrow { transform: none; }
 .pal-section { display: flex; flex-direction: column; gap: 4px; }
 .pal-header {
   font: inherit;

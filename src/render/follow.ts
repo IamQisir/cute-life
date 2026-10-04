@@ -24,25 +24,27 @@ function quantile(sorted: number[], q: number): number {
 /**
  * Camera target for the given cells and free screen area (px). Null when there
  * are no cells. `pad` is extra breathing room around the body, in cells.
+ * Set `bodyOnly` false to fit every cell of a picture or newly placed stamp.
  */
-export function followTarget(cells: Iterable<number>, viewW: number, viewH: number, pad = 6): FollowTarget | null {
+export function followTarget(cells: Iterable<number>, viewW: number, viewH: number, pad = 6, bodyOnly = true): FollowTarget | null {
   const xs: number[] = [];
   const ys: number[] = [];
   let i = 0;
   let stride = 1;
   const all = Array.isArray(cells) ? (cells as number[]) : [...cells];
   if (all.length === 0) return null;
-  if (all.length > SAMPLE) stride = Math.ceil(all.length / SAMPLE);
+  if (bodyOnly && all.length > SAMPLE) stride = Math.ceil(all.length / SAMPLE);
   for (; i < all.length; i += stride) {
     xs.push(keyX(all[i]));
     ys.push(keyY(all[i]));
   }
   xs.sort((a, b) => a - b);
   ys.sort((a, b) => a - b);
-  const x0 = quantile(xs, TRIM);
-  const x1 = quantile(xs, 1 - TRIM) + 1;
-  const y0 = quantile(ys, TRIM);
-  const y1 = quantile(ys, 1 - TRIM) + 1;
+  const trim = bodyOnly ? TRIM : 0;
+  const x0 = quantile(xs, trim);
+  const x1 = quantile(xs, 1 - trim) + 1;
+  const y0 = quantile(ys, trim);
+  const y1 = quantile(ys, 1 - trim) + 1;
   const w = x1 - x0 + pad * 2;
   const h = y1 - y0 + pad * 2;
   const zoom = Math.max(MIN_ZOOM, Math.min(FOLLOW_MAX_ZOOM, MAX_ZOOM, viewW / w, viewH / h));

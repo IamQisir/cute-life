@@ -23,6 +23,7 @@ import { type Pattern, placePattern } from './life/patterns';
 import { ArenaView } from './render/arenaView';
 import { Camera } from './render/camera';
 import { type FollowTarget, followTarget } from './render/follow';
+import { createFollowState, updateFollow } from './render/followController';
 import { pointBounds, shouldFrameStamp } from './render/framing';
 import { TerritoryView } from './render/territoryView';
 import { WorldView } from './render/world';
@@ -78,8 +79,7 @@ async function main() {
   let selecting = false;
   /** The camera keeps the body of the population in view until the player takes over. */
   let following = true;
-  let followAim: FollowTarget | null = null;
-  let followFrame = 0;
+  let followState = createFollowState();
   let followHinted = false;
   let introShown = false;
   /** A one-off stamp glide, independent of the player's follow setting. */
@@ -100,7 +100,8 @@ async function main() {
     shuffle,
     clear() {
       introShown = false;
-      stampAim = followAim = null;
+      stampAim = null;
+      followState = createFollowState();
       sim.clear(performance.now());
       forgetSharedLink();
       setPlaying(false);
@@ -163,7 +164,9 @@ async function main() {
   }
 
   function advance() {
+    observeFollow();
     const born = sim.advance(performance.now());
+    observeFollow();
     audio.births(born.map((k) => [keyX(k), keyY(k)]));
     refreshStatus();
     if (sim.population > POPULATION_CAP) {
@@ -196,6 +199,7 @@ async function main() {
       }
     }
     sim.addMany(pts, performance.now());
+    followState = createFollowState();
     forgetSharedLink();
     refreshStatus();
   }
@@ -205,7 +209,7 @@ async function main() {
     introShown = false;
     // Sim.clear reuses the renderer's drifting/dissolving death animation.
     sim.clear(now);
-    followAim = null;
+    followState = createFollowState();
   }
 
   function stampPoints(x: number, y: number): [number, number][] {
@@ -235,7 +239,8 @@ async function main() {
       const now = performance.now();
       clearIntro(now);
       sim.addMany(pts, now);
-      stampAim = followAim = null;
+      stampAim = null;
+      followState = createFollowState();
       const bounds = pointBounds(pts);
       const [left, top] = cam.toWorld(0, 0);
       const [right, bottom] = cam.toWorld(cam.w, cam.h);
@@ -387,9 +392,8 @@ async function main() {
       setFollowing(true);
       stampAim = null;
       lastManualCamera = -Infinity;
-      followAim = cameraTarget(sim.cells);
-      if (followAim) Object.assign(cam, followAim);
-      followFrame = 0;
+      observeFollow();
+      if (followState.aim) Object.assign(cam, offsetAim(followState.aim));
     }
     if (mode === 'sandbox' && !playing && sim.population > 0) setPlaying(true);
     hud.setRecording(0, MAX_RECORD_SECONDS);
@@ -681,25 +685,49 @@ async function main() {
   }
 
   function setFollowing(on: boolean) {
+    if (following !== on) followState = createFollowState();
     following = on;
-    followAim = null;
     hud.setFollow(on);
   }
 
-  function cameraTarget(cells: Iterable<number>, bodyOnly = true): FollowTarget | null {
+  function followViewport() {
     // The mobile palette is a bottom strip; desktop leaves space on the left.
     const narrow = cam.w <= 720;
-    const aim = followTarget(cells, Math.max(1, cam.w - (narrow ? 40 : 260)),
-      Math.max(1, cam.h - (narrow ? 300 : 200)), 6, bodyOnly);
-    if (!aim) return null;
-    return { x: aim.x - (narrow ? 0 : 110) / aim.zoom,
-      y: aim.y + (narrow ? 70 : 30) / aim.zoom, zoom: aim.zoom };
+    return { width: Math.max(1, cam.w - (narrow ? 40 : 260)),
+      height: Math.max(1, cam.h - (narrow ? 300 : 200)),
+      offsetX: narrow ? 0 : 110, offsetY: narrow ? 70 : 30 };
+  }
+
+  function offsetAim(aim: FollowTarget): FollowTarget {
+    const { offsetX, offsetY } = followViewport();
+    return { x: aim.x - offsetX / aim.zoom, y: aim.y + offsetY / aim.zoom, zoom: aim.zoom };
+  }
+
+  function cameraTarget(cells: Iterable<number>, bodyOnly = true): FollowTarget | null {
+    const { width, height } = followViewport();
+    const aim = followTarget(cells, width, height, 6, bodyOnly);
+    return aim ? offsetAim(aim) : null;
+  }
+
+  function observeFollow() {
+    if (!following || mode !== 'sandbox') return;
+    const { width, height } = followViewport();
+    followState = updateFollow(followState, sim.cells, sim.generation, width, height);
+  }
+
+  /** Continue following from an already framed stamp or restored camera. */
+  function holdCameraAim() {
+    const { offsetX, offsetY } = followViewport();
+    followState = createFollowState({ x: cam.x + offsetX / cam.zoom,
+      y: cam.y - offsetY / cam.zoom, zoom: cam.zoom });
   }
 
   function glideCamera(aim: FollowTarget, k: number) {
     cam.x += (aim.x - cam.x) * k;
     cam.y += (aim.y - cam.y) * k;
     cam.zoom += (aim.zoom - cam.zoom) * k;
+    if (Math.hypot(aim.x - cam.x, aim.y - cam.y) * cam.zoom < 0.1
+      && Math.abs(aim.zoom - cam.zoom) < aim.zoom * 0.0001) Object.assign(cam, aim);
   }
 
   /** Stamp glides also run while paused; population follow runs while playing/recording. */
@@ -710,15 +738,16 @@ async function main() {
       if (Math.hypot(stampAim.x - cam.x, stampAim.y - cam.y) * cam.zoom < 0.5
         && Math.abs(stampAim.zoom - cam.zoom) < 0.05) {
         Object.assign(cam, stampAim);
-        stampAim = followAim = null;
+        stampAim = null;
+        holdCameraAim();
       }
       return;
     }
     if (!following || (!playing && recordedFollowing === null) || sim.population === 0) return;
     const recording = recordedFollowing !== null;
-    if (followFrame++ % (recording ? 30 : 10) === 0 || !followAim) followAim = cameraTarget(sim.cells);
-    if (!followAim) return;
-    glideCamera(followAim, recording ? 0.025 : 0.06);
+    observeFollow();
+    if (!followState.aim) return;
+    glideCamera(offsetAim(followState.aim), recording ? 0.025 : 0.06);
   }
 
   function drawSelection() {
@@ -763,6 +792,7 @@ async function main() {
         // cannot wipe out the player's own cells.
         introShown = false;
         stampAim = null;
+        followState = createFollowState();
         forgetSharedLink();
         if (now - lastPopAt > 90) {
           if (v) audio.pop(x, y);
@@ -825,7 +855,8 @@ async function main() {
     },
     manualCamera() {
       if (mode !== 'sandbox') return;
-      stampAim = followAim = null;
+      stampAim = null;
+      followState = createFollowState();
       lastManualCamera = performance.now();
       if (!following || recordedFollowing !== null) return;
       setFollowing(false);
@@ -858,13 +889,14 @@ async function main() {
   };
   onResize();
   if (introShown) {
-    const aim = cameraTarget(sim.cells, false);
-    if (aim) Object.assign(cam, aim);
+    observeFollow();
+    if (followState.aim) Object.assign(cam, offsetAim(followState.aim));
   }
   if (shared?.cam) {
     cam.x = shared.cam.x;
     cam.y = shared.cam.y;
     cam.zoom = shared.cam.zoom;
+    holdCameraAim();
   }
   window.addEventListener('resize', () => {
     cam.w = app.screen.width;

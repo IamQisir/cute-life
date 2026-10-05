@@ -24,6 +24,8 @@ export interface HudActions {
   setSpeed(genPerSec: number): void;
   toggleSound(): void;
   toggleHand(): void;
+  rotateStamp(): void;
+  flipStamp(): void;
   pickPattern(p: Pattern | null): void;
   toggleRecord(): void;
   share(): void;
@@ -107,6 +109,7 @@ export class Hud {
   private selectBtn: HTMLButtonElement;
   private followBtn: HTMLButtonElement;
   private picked: Pattern | null = null;
+  private stampControls = el('div', 'stamp-controls');
   private cornerCells: ReturnType<typeof attachCornerCells>;
 
   constructor(root: HTMLElement, a: HudActions) {
@@ -212,7 +215,18 @@ export class Hud {
       palette.classList.toggle('collapsed', hidden);
       setPaletteHidden(hidden);
     });
-    palette.append(top);
+    this.stampControls.hidden = true;
+    this.stampControls.setAttribute('role', 'group');
+    this.stampControls.setAttribute('aria-label', 'orient held stamp');
+    this.stampControls.addEventListener('pointerdown', (e) => e.stopPropagation());
+    this.stampControls.append(
+      toolbarButton('rotate', 'rotate', 'rotate', a.rotateStamp),
+      toolbarButton('flip', 'flip', 'flip', a.flipStamp),
+    );
+    const [rotate, flip] = this.stampControls.querySelectorAll('button');
+    decorate(rotate, 'rotate', 'rotate', 'rotate (R)');
+    decorate(flip, 'flip', 'flip', 'flip (F)');
+    palette.append(this.stampControls, top);
     const cell = WorldView.portrait('happy', 0);
     for (const group of byCategory()) {
       const cards = group.entries.map((p) => {
@@ -287,6 +301,7 @@ export class Hud {
 
   setPattern(p: Pattern | null) {
     this.picked = p;
+    this.stampControls.hidden = !p;
     for (const [q, card] of [...this.cards, ...this.customCards]) card.classList.toggle('on', q === p);
   }
 

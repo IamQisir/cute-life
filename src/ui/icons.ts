@@ -13,6 +13,8 @@ export const ICONS = {
   soundOff: [speaker, 'M16 9 L21 15 M21 9 L16 15'],
   help: ['M8 7 Q8 3 12 3 Q17 3 17 7 Q17 10 12 12 L12 15', 'M12 19 L12.1 19.2'],
   settings: ['M9 3 L14 3.2 L15 6 L18 5.5 L21 9 L19 12 L21 15 L18 18.5 L15 18 L14 21 L9 20.8 L8 18 L5 18.5 L2.8 15 L5 12 L3 9 L5.5 5.5 L8 6 Z', 'M16 12 A4 4 0 1 1 8 12 A4 4 0 1 1 16 12 Z'],
+  rotate: ['M18.8 8 Q16 3 10 4 Q3 5 4 12 Q4.5 20 12 20 Q17 20 20 15', 'M14 8 L19.5 8.3 L20 3'],
+  flip: ['M12 3 L12.2 6 M12 9 L12 15 M12 18 L12 21', 'M3 8 L9 8.2 M3 8 L5.5 5.5 M3 8 L5.5 10.5 M21 16 L15 15.8 M21 16 L18.5 13.5 M21 16 L18.5 18.5'],
 } as const;
 
 export type IconName = keyof typeof ICONS;

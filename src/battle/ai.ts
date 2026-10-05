@@ -2,6 +2,7 @@ import { BLUE, RED, deployZone, simulateBattle, validateDeployment } from './are
 import type { ArenaConfig, Pt, Team } from './arena';
 import { classify } from '../life/clusters';
 import { BATTLE_PATTERN_NAMES, PATTERNS } from '../life/patterns';
+import { orientPoints } from '../life/orientation';
 
 export type Stars = 1 | 2 | 3 | 4 | 5;
 
@@ -54,8 +55,7 @@ function orientations(rows: string[]): Shape[] {
   const out: Shape[] = [];
   for (let mirror = 0; mirror < 2; mirror++) {
     for (let rot = 0; rot < 4; rot++) {
-      let pts = base.map(([x, y]): Pt => [mirror ? -x : x, y]);
-      for (let r = 0; r < rot; r++) pts = pts.map(([x, y]): Pt => [-y, x]);
+      let pts = orientPoints(base, { rot: rot as 0 | 1 | 2 | 3, flip: Boolean(mirror) });
       const minX = Math.min(...pts.map(([x]) => x));
       const minY = Math.min(...pts.map(([, y]) => y));
       pts = pts.map(([x, y]): Pt => [x - minX, y - minY]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);

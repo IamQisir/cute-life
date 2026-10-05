@@ -21,6 +21,7 @@ export interface InputTarget {
   toggleHand(): void;
   cancelStamp(): void;
   rotateStamp(): void;
+  flipStamp(): void;
   setHover(cell: [number, number] | null): void;
   /** The player moved or zoomed the camera themselves. */
   manualCamera(): void;
@@ -193,6 +194,9 @@ export function attachInput(el: HTMLElement, t: InputTarget) {
         break;
       case 'KeyR':
         t.rotateStamp();
+        break;
+      case 'KeyF':
+        t.flipStamp();
         break;
       case 'Escape':
         t.cancelStamp();

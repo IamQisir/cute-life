@@ -17,9 +17,9 @@ export interface ArenaConfig {
 }
 
 /** Arena sizes players can pick. */
-export type ArenaSize = 'small' | 'medium' | 'large' | 'xl';
-export const ARENA_SIZES: ArenaSize[] = ['small', 'medium', 'large', 'xl'];
-type LegacySize = Exclude<ArenaSize, 'xl'>;
+export type ArenaSize = 'small' | 'medium' | 'large' | 'xl' | 'huge';
+export const ARENA_SIZES: ArenaSize[] = ['small', 'medium', 'large', 'xl', 'huge'];
+type LegacySize = Exclude<ArenaSize, 'xl' | 'huge'>;
 /** Original territory rules, retained for version-1 links (there was no xl then). */
 export const LEGACY_PRESETS: Record<LegacySize, ArenaConfig> = {
   small: { width: 28, height: 20, budget: 20, generations: 150, buffer: 1, wrapX: false, wrapY: true },
@@ -37,12 +37,16 @@ export const ARENA_PRESETS: Record<ArenaSize, ArenaConfig> = {
   // Zones: red x 0..33, blue x 46..79; the 12x12 garden fills the gap.
   xl: { width: 80, height: 56, budget: 100, generations: 360, buffer: 6, wrapX: false, wrapY: true,
     endOnExtinction: true, garden: { x0: 34, x1: 45, y0: 22, y1: 33 } },
+  // 54x72 zones fit the largest guns; keep the same 12-column garden gap.
+  // About twice xl's zone area, with a modestly lower deployment density.
+  huge: { width: 120, height: 72, budget: 180, generations: 480, buffer: 6, wrapX: false, wrapY: true,
+    endOnExtinction: true, garden: { x0: 54, x1: 65, y0: 30, y1: 41 } },
 };
 
 /** The preset for a link's rules + size, or null if that combination never existed. */
 export function presetFor(rules: 'garden' | 'legacy', size: ArenaSize): ArenaConfig | null {
   if (rules === 'garden') return ARENA_PRESETS[size];
-  return size === 'xl' ? null : LEGACY_PRESETS[size];
+  return size === 'xl' || size === 'huge' ? null : LEGACY_PRESETS[size];
 }
 export const DEFAULT_ARENA = ARENA_PRESETS.small;
 export type Grid = Uint8Array;

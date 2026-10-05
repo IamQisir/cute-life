@@ -5,12 +5,14 @@
 
 import type { Stars } from '../battle/ai';
 import type { BattleMode } from '../battle/mode';
+import type { AiArenaSize } from '../battle/arenaPreference';
 
 export interface BattleActions {
   ready(): void;
   random(): void;
   clear(): void;
   setStars(stars: Stars): void;
+  setSize(size: AiArenaSize): void;
   challenge(name: string): void;
   editArmy(): void;
   replay(): void;
@@ -143,6 +145,19 @@ export class BattleHud {
 
     if (b.phase === 'deploy') {
       if (o.kind === 'ai') {
+        const arena = el('div', 'side-group');
+        const sizes = el('div', 'arena-picker');
+        sizes.setAttribute('role', 'group');
+        sizes.setAttribute('aria-label', 'arena size');
+        sizes.append(el('span', '', 'arena:'));
+        for (const [size, label] of [['xl', 'big'], ['huge', 'huge']] as const) {
+          const pick = button(label, () => this.a.setSize(size), b.size === size ? 'on' : '');
+          pick.setAttribute('aria-pressed', String(b.size === size));
+          pick.title = `${label} arena · ${size === 'xl' ? '80×56' : '120×72'}`;
+          sizes.append(pick);
+        }
+        arena.append(sizes);
+        this.side.append(arena);
         const stars = el('div', 'stars');
         stars.title = 'AI difficulty';
         for (let i = 1; i <= 5; i++) {

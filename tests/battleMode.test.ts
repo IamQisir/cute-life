@@ -15,7 +15,10 @@ beforeEach(() => {
   });
   vi.stubGlobal('location', { origin: 'https://example.com', pathname: '/' });
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe('AI arena preference and battle flow', () => {
   it('defaults to xl, remembers the picker and clears/reframes a changed deployment', () => {
@@ -102,8 +105,20 @@ describe('AI arena preference and battle flow', () => {
     expect(b.placeStamp(points, 2)).toBeNull();
     expect(b.budgetLeft).toBe(176);
     expect(b.stampProblem(shape.map(([x, y]) => [x + 58, y + 3]))).toBe('zone');
+    // A fixed random army, so the replay below is the same every run.
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
     b.randomArmy(3);
-    expect(b.stampProblem([[53, 71], [52, 71], [51, 71], [50, 71], [49, 71]])).toBe('budget');
+    // One more fresh cell than the budget allows. A fixed row could already be
+    // inside the random army, leaving nothing new to place.
+    const taken = new Set(b.army.map(String));
+    const free = deployZoneRects(b.cfg, RED)
+      .flatMap((r) => Array.from({ length: (r.x1 - r.x0 + 1) * (r.y1 - r.y0 + 1) },
+        (_, i): [number, number] => [r.x0 + (i % (r.x1 - r.x0 + 1)), r.y0 + Math.floor(i / (r.x1 - r.x0 + 1))]))
+      .filter((p) => !taken.has(String(p)))
+      .slice(0, b.budgetLeft + 1);
+    expect(free).toHaveLength(b.budgetLeft + 1);
+    expect(b.stampProblem(free)).toBe('budget');
+    expect(b.stampProblem(free.slice(1))).toBeNull();
     b.enemy = [[deployZone(b.cfg, BLUE).x0, 1]];
     expect(validateDeployment(b.cfg, RED, b.army)).toEqual({ ok: true });
     const replay = fromReplayHash(b.replayLink()!.split('#')[1])!;

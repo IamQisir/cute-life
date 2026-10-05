@@ -1,69 +1,76 @@
-import { WELCOME_MOODS, welcomeFace } from './welcomeCast';
-import { welcomeBeat, welcomeLensTimeline, WELCOME_SHOTS } from './welcomeTimeline';
+import { captionAt, frameScale, TAGLINE, type TrailerFrame } from './trailer';
 
-// CSS ease (.25,.1,.25,1), sampled rather than driven by the browser's wall clock.
-export function captionEntrance(seconds: number) {
-  const x = Math.max(0, Math.min(1, seconds / 0.45));
-  const curve = (t: number, a: number, b: number) => 3 * (1 - t) ** 2 * t * a + 3 * (1 - t) * t * t * b + t ** 3;
-  let low = 0, high = 1;
-  for (let i = 0; i < 24; i++) { const mid = (low + high) / 2; if (curve(mid, 0.25, 0.25) < x) low = mid; else high = mid; }
-  return x === 0 || x === 1 ? x : curve((low + high) / 2, 0.1, 1);
-}
-function lines(ctx: CanvasRenderingContext2D, text: string, width: number) {
-  const result: string[] = [];
-  let line = '';
-  for (const word of text.split(' ')) {
-    const next = line ? `${line} ${word}` : word;
-    if (line && ctx.measureText(next).width > width) { result.push(line); line = word; }
-    else line = next;
-  }
-  if (line) result.push(line);
-  return result;
-}
-/** The DOM/CSS show layers, minus controls/HUD. Lens ink and sparkles are already in Pixi. */
+const PAPER = '#f2ece0';
+const INK = '#3b302a';
+const RED = '#c4483a';
+
+/**
+ * The trailer's 2D layers over the Pixi frame: vignette, speed lines, flash,
+ * slammed captions, the end-card tagline and the final fade to paper.
+ * Drawn in logical pixels; the caller may pre-scale the context for HiDPI.
+ */
 export class WelcomeExportOverlays {
-  private faces = WELCOME_MOODS.map((_, i) => welcomeFace(i));
-  draw(ctx: CanvasRenderingContext2D, seconds: number, width: number, height: number) {
-    const frame = welcomeLensTimeline(seconds, width, height);
-    // Same ellipse and stops as .welcome-overlay's radial-gradient.
+  draw(ctx: CanvasRenderingContext2D, seconds: number, width: number, height: number, frame: TrailerFrame) {
+    const s = frameScale(width, height);
+    // Vignette: a soft paper-shadow ellipse.
     ctx.save(); ctx.translate(width / 2, height / 2); ctx.scale(width / 2, height / 2);
     const shade = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.SQRT2);
-    shade.addColorStop(0.38, '#65574700'); shade.addColorStop(1, '#65574724');
+    shade.addColorStop(0.42, '#65574700'); shade.addColorStop(1, '#6557472e');
     ctx.fillStyle = shade; ctx.fillRect(-1, -1, 2, 2); ctx.restore();
-    ctx.save(); ctx.globalAlpha = frame.speedAlpha; ctx.scale(width / 1000, height / 1000);
-    ctx.strokeStyle = '#8a7d6c'; ctx.lineWidth = 2; ctx.lineCap = 'round';
-    for (let i = 0; i < 24; i++) {
-      const angle = i / 24 * Math.PI * 2, inner = 260 + (i % 4) * 35;
-      ctx.beginPath(); ctx.moveTo(500 + Math.cos(angle) * inner, 500 + Math.sin(angle) * inner);
-      ctx.quadraticCurveTo(500 + Math.cos(angle + 0.006) * 550, 500 + Math.sin(angle + 0.006) * 550, 500 + Math.cos(angle) * 850, 500 + Math.sin(angle) * 850); ctx.stroke();
+
+    if (frame.speedLines > 0) {
+      // Hand-drawn rays from the centre; a little jitter per beat keeps them alive.
+      ctx.save(); ctx.globalAlpha = frame.speedLines; ctx.translate(width / 2, height / 2);
+      ctx.strokeStyle = '#8a7d6c'; ctx.lineCap = 'round';
+      const reach = Math.hypot(width, height) / 2, jitter = Math.floor(seconds * 16);
+      for (let i = 0; i < 36; i++) {
+        const angle = (i + ((i * 7 + jitter) % 5) * 0.12) / 36 * Math.PI * 2;
+        const inner = reach * (0.52 + ((i * 13 + jitter) % 7) * 0.035);
+        ctx.lineWidth = (1.5 + (i % 3)) * s;
+        ctx.beginPath(); ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+        ctx.lineTo(Math.cos(angle) * reach * 1.05, Math.sin(angle) * reach * 1.05); ctx.stroke();
+      }
+      ctx.restore();
     }
-    ctx.restore();
-    ctx.save(); ctx.globalAlpha = frame.flashAlpha; ctx.fillStyle = '#fffdf6'; ctx.fillRect(0, 0, width, height); ctx.restore();
-    const beat = welcomeBeat(seconds), shot = WELCOME_SHOTS[beat];
-    const paperWidth = Math.min(700, width - 32), innerWidth = paperWidth - 44;
-    ctx.save(); ctx.translate(width / 2, 16); ctx.rotate(-Math.PI / 180); ctx.translate(-paperWidth / 2, 0);
-    ctx.font = "700 46px 'Caveat'";
-    const caption = lines(ctx, shot.caption, innerWidth);
-    const titleHeight = caption.length * 50.6;
-    const columns = width < height ? 2 : 4, rowHeight = 48;
-    const ruleHeight = beat === 4 ? Math.ceil(4 / columns) * rowHeight : 0;
-    const paperHeight = 36 + titleHeight + 8 + ruleHeight;
-    ctx.fillStyle = '#00000017'; ctx.beginPath(); ctx.roundRect(4, 6, paperWidth, paperHeight, [12, 4, 14, 5]); ctx.fill();
-    ctx.fillStyle = '#fff6c9ed'; ctx.strokeStyle = '#7a6a5c'; ctx.lineWidth = 1.6;
-    ctx.beginPath(); ctx.roundRect(0, 0, paperWidth, paperHeight, [12, 4, 14, 5]); ctx.fill(); ctx.stroke();
-    ctx.save(); const u = captionEntrance(seconds - shot.start);
-    ctx.globalAlpha = u; ctx.translate(22, 18 + 10 * (1 - u)); ctx.rotate(-2 * (1 - u) * Math.PI / 180);
-    ctx.fillStyle = '#c4483a'; ctx.textBaseline = 'top';
-    caption.forEach((line, i) => ctx.fillText(line, 0, i * 50.6)); ctx.restore();
-    if (beat === 4) {
-      ctx.font = "17px 'Patrick Hand'"; ctx.fillStyle = '#3b302a'; ctx.textBaseline = 'top';
-      WELCOME_MOODS.forEach(({ rule }, i) => {
-        const x = 22 + (i % columns) * ((innerWidth + 8) / columns), y = 18 + titleHeight + 8 + Math.floor(i / columns) * rowHeight;
-        ctx.drawImage(this.faces[i], x, y, 40, 40);
-        const wrapped = lines(ctx, rule, innerWidth / columns - 48);
-        wrapped.forEach((line, j) => ctx.fillText(line, x + 43, y + 2 + j * 17.85));
-      });
+
+    const caption = captionAt(seconds);
+    if (caption) {
+      const size = Math.round((caption.text.length > 14 ? 92 : 118) * s);
+      ctx.save();
+      ctx.globalAlpha = caption.alpha;
+      ctx.translate(width / 2, caption.place === 'centre' ? height * 0.5 : height * 0.8);
+      ctx.rotate(caption.rotate - 1.2 * Math.PI / 180);
+      ctx.scale(caption.scale, caption.scale);
+      ctx.font = `700 ${size}px Caveat`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.lineJoin = 'round';
+      // Offset ink shadow, a thick paper outline, then the red letters.
+      ctx.fillStyle = '#3b302a33'; ctx.fillText(caption.text, 5 * s, 7 * s);
+      ctx.strokeStyle = PAPER; ctx.lineWidth = 18 * s; ctx.strokeText(caption.text, 0, 0);
+      ctx.strokeStyle = INK; ctx.lineWidth = 3 * s; ctx.strokeText(caption.text, 0, 0);
+      ctx.fillStyle = RED; ctx.fillText(caption.text, 0, 0);
+      ctx.restore();
     }
-    ctx.restore();
+
+    if (frame.tagline > 0) {
+      ctx.save();
+      ctx.globalAlpha = frame.tagline;
+      const size = Math.round(Math.min(46 * s, width / 26));
+      ctx.font = `${size}px 'Patrick Hand'`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      // Below the title: the letters span y −15…16 in world cells.
+      const y = height / 2 + (24 - frame.camera.y) * frame.camera.zoom + (1 - frame.tagline) * 10 * s;
+      ctx.lineJoin = 'round'; ctx.strokeStyle = PAPER; ctx.lineWidth = 10 * s;
+      ctx.strokeText(TAGLINE.text, width / 2, y);
+      ctx.fillStyle = INK; ctx.fillText(TAGLINE.text, width / 2, y);
+      ctx.restore();
+    }
+
+    if (frame.flash > 0) {
+      ctx.save(); ctx.globalAlpha = frame.flash; ctx.fillStyle = '#fffdf6'; ctx.fillRect(0, 0, width, height); ctx.restore();
+    }
+    if (frame.paperFade > 0) {
+      ctx.save(); ctx.globalAlpha = frame.paperFade; ctx.fillStyle = PAPER; ctx.fillRect(0, 0, width, height); ctx.restore();
+    }
   }
 }

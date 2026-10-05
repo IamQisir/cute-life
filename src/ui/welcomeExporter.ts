@@ -3,8 +3,9 @@ import type { WelcomeHost } from './welcomeSandbox';
 import type { WelcomePresentation } from './welcomeShow';
 import { WelcomeExportShow } from './welcomeExportShow';
 import { WelcomeExportOverlays } from './welcomeExportOverlays';
-import { INTRO_COMMANDS, INTRO_FORMATS, INTRO_FRAMES, introFrameName, introFrameSample } from './introExport';
-import { WelcomeSound, type OfflineWelcomeClock } from '../audio/welcomeSound';
+import { INTRO_COMMANDS, INTRO_FORMATS, INTRO_FRAMES, INTRO_SCALE, introFrameName, introFrameSample, introPixels } from './introExport';
+import { TRAILER_SECONDS } from './trailer';
+import { scheduleTrailerScore } from '../audio/trailerScore';
 import { encodeWav } from '../audio/wav';
 
 // File System Access is available in Chromium, and not in TypeScript's DOM lib yet.
@@ -38,10 +39,11 @@ export function mountIntroExporter(app: Application, host: WelcomeHost, presenta
   const picker = (window as PickerWindow).showDirectoryPicker;
   if (!picker) {
     start.disabled = true;
-    status.textContent = 'Folder export requires Chrome or another browser with the File System Access API. Open this URL in Chrome on localhost.';
+    status.textContent = 'Folder export requires Chrome or another browser with the File System Access API.';
     return;
   }
-  status.textContent = 'Exports 960 PNGs per format plus a 48 kHz stereo WAV. Choose an empty output folder; matching filenames will be overwritten.';
+  const [landscape, portrait] = INTRO_FORMATS.map(introPixels);
+  status.textContent = `Exports ${INTRO_FRAMES} PNGs per format (${landscape.width}×${landscape.height} and ${portrait.width}×${portrait.height}) plus a 48 kHz stereo WAV. Choose an empty folder; keep this tab in front.`;
   let cancelled = false, running = false;
   cancel.addEventListener('click', () => { cancelled = true; cancel.disabled = true; status.textContent = 'Cancelling after the current write…'; });
   start.addEventListener('click', async () => {
@@ -55,10 +57,7 @@ export function mountIntroExporter(app: Application, host: WelcomeHost, presenta
     const visibility = app.stage.children.map((child) => ({ child, visible: child.visible }));
     const hud = document.getElementById('hud'); const inert = hud?.inert;
     let show: WelcomeExportShow | null = null;
-    let context: OfflineAudioContext | null = null;
-    let score: WelcomeSound | null = null;
-    // Public resize() cancels any queued resize in Pixi v8. The installed
-    // runtime has no cancelResize() despite advertising it in its declarations.
+    // Public resize() cancels any queued resize in Pixi v8.
     app.stop(); app.resize();
     // Pixi accepts a falsy resize target at runtime; its declaration omits null.
     app.resizeTo = null as unknown as Window;
@@ -66,32 +65,31 @@ export function mountIntroExporter(app: Application, host: WelcomeHost, presenta
     visibility.forEach(({ child }) => { child.visible = child === presentation.view.root; });
     const began = performance.now();
     try {
-      // Explicitly request both fonts, including when an existing visitor skips the title.
-      await Promise.all([document.fonts.load("700 46px Caveat"), document.fonts.load("17px 'Patrick Hand'")]);
+      await Promise.all([document.fonts.load('700 118px Caveat'), document.fonts.load("46px 'Patrick Hand'")]);
       await document.fonts.ready;
       if (cancelled) return;
-      context = new OfflineAudioContext(2, 48000 * 16, 48000);
-      const clock: OfflineWelcomeClock = { lease: { context, output: context.destination, release() {} }, time: 0 };
-      score = new WelcomeSound({ mode: 'all', beginWelcome: () => null }, false, clock);
       const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d')!;
       const overlays = new WelcomeExportOverlays();
       let total = 0;
       for (const format of INTRO_FORMATS) {
         if (cancelled) break;
         const folder = await directory.getDirectoryHandle(format.name, { create: true });
-        app.renderer.resize(format.width, format.height, 1);
+        const pixels = introPixels(format);
+        // Logical size for the timeline; rendered at 4/3 so lines and text stay crisp.
+        app.renderer.resize(format.width, format.height, INTRO_SCALE);
         Object.assign(host.cam, { w: format.width, h: format.height });
         presentation.view.resize(format.width, format.height);
-        canvas.width = format.width; canvas.height = format.height;
-        show = new WelcomeExportShow(host, presentation);
+        canvas.width = pixels.width; canvas.height = pixels.height;
+        show = new WelcomeExportShow(host, presentation, { dotBitmap: false });
         for (let i = 0; i < INTRO_FRAMES && !cancelled; i++) {
-          const sample = introFrameSample(i, format.width, format.height);
-          const result = show.sample(sample.seconds);
-          if (format.name === 'landscape') score.update(sample.seconds, result.generation, result.births);
+          const { seconds } = introFrameSample(i);
+          const result = show.sample(seconds);
           app.renderer.render(app.stage);
           // Copy synchronously before toBlob or any filesystem await can clear WebGL's buffer.
-          ctx.drawImage(app.canvas, 0, 0, format.width, format.height);
-          overlays.draw(ctx, sample.seconds, format.width, format.height);
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.drawImage(app.canvas, 0, 0, pixels.width, pixels.height);
+          ctx.setTransform(INTRO_SCALE, 0, 0, INTRO_SCALE, 0, 0);
+          overlays.draw(ctx, seconds, format.width, format.height, result.frame);
           await write(folder, introFrameName(i), await png(canvas));
           progress.value = ++total;
           const elapsed = (performance.now() - began) / 1000;
@@ -102,16 +100,16 @@ export function mountIntroExporter(app: Application, host: WelcomeHost, presenta
       }
       if (!cancelled) {
         status.textContent = 'Rendering 48 kHz stereo audio…';
+        const context = new OfflineAudioContext(2, Math.ceil(48000 * TRAILER_SECONDS), 48000);
+        scheduleTrailerScore(context, context.destination, { startAt: 0 });
         const audio = await context.startRendering();
-        if (!cancelled) {
-          await write(directory, 'audio.wav', new Blob([encodeWav([audio.getChannelData(0), audio.getChannelData(1)], 48000)], { type: 'audio/wav' }));
-          status.textContent = 'Export complete. Run these commands from the selected folder, then copy the four MP4/JPG files into public/intro/.';
-          commands.textContent = INTRO_COMMANDS;
-        }
+        await write(directory, 'audio.wav', new Blob([encodeWav([audio.getChannelData(0), audio.getChannelData(1)], 48000)], { type: 'audio/wav' }));
+        status.textContent = 'Export complete. Run these commands from the selected folder, then copy the videos and posters into public/intro/.';
+        commands.textContent = INTRO_COMMANDS;
       }
     } catch (error) { status.textContent = `Export failed: ${String(error)}`; }
     finally {
-      show?.dispose(); score?.dispose();
+      show?.dispose();
       app.renderer.resize(old.width, old.height, old.resolution);
       visibility.forEach(({ child, visible }) => { child.visible = visible; });
       app.resizeTo = old.resizeTo;

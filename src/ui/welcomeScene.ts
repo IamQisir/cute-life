@@ -49,21 +49,28 @@ const LETTERS: Record<string, string[]> = {
   f: ['11111', '10000', '10000', '11110', '10000', '10000', '10000'],
 };
 /** Each ink pixel is an isolated 2×2 block, with a three-cell moat. Actual B3/S23 lettering. */
-export function welcomeLettering(): Cells {
-  const points: [number, number][] = [];
+export function welcomeLetters(): [number, number][][] {
+  const letters: [number, number][][] = [];
   let offset = -125;
   for (const letter of 'cute life') {
     if (letter === ' ') { offset += 15; continue; }
+    const points: [number, number][] = [];
     LETTERS[letter].forEach((row, y) => [...row].forEach((pixel, x) => {
       if (pixel === '1') points.push(...welcomePattern('block', offset + x * 5, -15 + y * 5));
     }));
+    letters.push(points);
     offset += 30;
   }
-  return fromList(points);
+  return letters;
 }
+export function welcomeLettering(): Cells {
+  return fromList(welcomeLetters().flat());
+}
+/** The title's footprint plus its moat, in world cells (inclusive). */
+export const LETTERING_RECT = { x0: -128, y0: -18, x1: 124, y1: 19 } as const;
 
-export function showcaseSeed(small = false): Cells {
-  const points = toList(welcomeLettering());
+export function showcaseSeed(small = false, lettering = true): Cells {
+  const points = lettering ? toList(welcomeLettering()) : [];
   // The small cast keeps the focus battery and half of the distant emitters.
   for (const gun of SHOWCASE_BATTERIES.filter((_, i) => !small || i < 2 || (i >= 4 && i % 2 === 0))) {
     let cells = fromList(welcomePattern('gosperglidergun', 0, 0));
@@ -108,8 +115,8 @@ export function showcaseSeed(small = false): Cells {
 }
 
 /** No renderer work or animation records during warmup. */
-export function buildWelcomeScene(small = false): Cells {
-  let cells = showcaseSeed(small);
+export function buildWelcomeScene(small = false, lettering = true): Cells {
+  let cells = showcaseSeed(small, lettering);
   const cap = small ? WELCOME_SMALL_CAP : WELCOME_CELL_CAP;
   for (let i = 0; i < WELCOME_PRE_ADVANCE; i++) {
     cells = step(cells);

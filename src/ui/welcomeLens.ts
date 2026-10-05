@@ -2,7 +2,7 @@ import { Container, Graphics } from 'pixi.js';
 import { Camera } from '../render/camera';
 import { WorldView } from '../render/world';
 import type { SimView } from '../sim';
-import type { welcomeLensTimeline } from './welcomeTimeline';
+export interface LensFrame { sx: number; sy: number; radius: number; lens: { x: number; y: number; zoom: number }; lensVisible: boolean; inkAlpha: number }
 
 /** Second on-screen pass, circle masked; no framebuffer or copied cell textures. */
 export class WelcomeLens {
@@ -20,7 +20,7 @@ export class WelcomeLens {
     stage.addChild(this.root);
   }
 
-  update(now: number, sim: SimView, width: number, height: number, frame: ReturnType<typeof welcomeLensTimeline>) {
+  update(now: number, sim: SimView, width: number, height: number, frame: LensFrame) {
     this.root.visible = frame.lensVisible || frame.inkAlpha > 0;
     if (!this.root.visible) return;
     const { sx, sy, radius: r } = frame;

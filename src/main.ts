@@ -1029,12 +1029,18 @@ async function main() {
   if (params.has('sprinkle')) shuffle();
   if (params.has('play')) setPlaying(true);
 
+  // Developer-only trailer tools, loaded on demand.
+  const introHost = {
+    sim, cam, playing: () => playing, following: () => following,
+    setPlaying, setFollowing, refreshStatus,
+  };
+  const introPresentation = { stage: app.stage, renderer: app.renderer, view, audio, soundChanged: () => hud.setSound(audio.mode) };
   if (params.has('render-intro')) {
     const { mountIntroExporter } = await import('./ui/welcomeExporter');
-    mountIntroExporter(app, {
-      sim, cam, playing: () => playing, following: () => following,
-      setPlaying, setFollowing, refreshStatus,
-    }, { stage: app.stage, renderer: app.renderer, view, audio, soundChanged: () => hud.setSound(audio.mode) });
+    mountIntroExporter(app, introHost, introPresentation);
+  } else if (params.has('intro-preview')) {
+    const { mountTrailerPreview } = await import('./ui/trailerPreview');
+    mountTrailerPreview(app, introHost, introPresentation);
   } else onboarding.start(Boolean(shared || offered || challenge || replayLink));
 
   // Handy for debugging and for future screenshot tooling.

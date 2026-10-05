@@ -1,64 +1,52 @@
 import { describe, expect, it } from 'vitest';
-import { fromList, step, keyX, keyY, toList, type Cells } from '../src/life/engine';
+import { fromList, step, key, keyX, keyY, toList, type Cells } from '../src/life/engine';
 import { Camera } from '../src/render/camera';
 import { Sim } from '../src/sim';
 import { borrowSandbox } from '../src/ui/welcomeSandbox';
 import {
-  buildWelcomeScene, showcaseSeed, SHOWCASE_GUNS, SHOWCASE_BATTERIES, COLLISION_ZONES, welcomeLettering, welcomePattern, WELCOME_GENESIS, WELCOME_CELL_CAP, WELCOME_SMALL_CAP, WELCOME_PRE_ADVANCE,
+  buildWelcomeScene, showcaseSeed, SHOWCASE_GUNS, SHOWCASE_BATTERIES, COLLISION_ZONES, LETTERING_RECT, welcomeLetters,
+  welcomeLettering, welcomePattern, WELCOME_GENESIS, WELCOME_CELL_CAP, WELCOME_PRE_ADVANCE,
 } from '../src/ui/welcomeScene';
-import { welcomeBeat, welcomeCamera, welcomeGeneration, welcomeWideZoom, WELCOME_SHOTS, welcomeLensTimeline, welcomeSemanticSwitch, welcomeUsesDive, WELCOME_FOCUS, WELCOME_IRIS_START, WELCOME_SECONDS, WELCOME_ZOOM_END } from '../src/ui/welcomeTimeline';
+import { at, BEAT, HUSH_BLINKER, LETTER_POPS, MONTAGE, trailerFrame, trailerGeneration, TRAILER_SECONDS } from '../src/ui/trailer';
 
-/** Equal-area screen samples, with a true 20-cell radius rather than a bounding box. */
-function screenCoverage(cells: Cells, seconds: number, width: number, height: number) {
-  const radius = 20, columns = 32, rows = 48;
-  const buckets = new Map<string, [number, number][]>();
-  for (const point of toList(cells)) {
-    const bucket = `${Math.floor(point[0] / radius)},${Math.floor(point[1] / radius)}`;
-    if (!buckets.has(bucket)) buckets.set(bucket, []);
-    buckets.get(bucket)!.push(point);
-  }
-  const camera = welcomeCamera(seconds, width, height);
-  let occupied = 0;
-  for (let row = 0; row < rows; row++) for (let col = 0; col < columns; col++) {
-    const x = camera.x + ((col + 0.5) / columns - 0.5) * width / camera.zoom;
-    const y = camera.y + ((row + 0.5) / rows - 0.5) * height / camera.zoom;
-    const bx = Math.floor(x / radius), by = Math.floor(y / radius);
-    let active = false;
-    for (let dx = -1; dx <= 1 && !active; dx++) for (let dy = -1; dy <= 1 && !active; dy++) {
-      active = (buckets.get(`${bx + dx},${by + dy}`) ?? []).some(([px, py]) => (px - x) ** 2 + (py - y) ** 2 <= radius ** 2);
-    }
-    if (active) occupied++;
-  }
-  return occupied / (columns * rows);
-}
+const inTitle = (k: number) => {
+  const r = LETTERING_RECT, x = keyX(k), y = keyY(k);
+  return x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1;
+};
+const withGenesis = (cells: Cells) => new Set([...cells, ...fromList(welcomePattern('rpentomino', WELCOME_GENESIS.x, WELCOME_GENESIS.y))]);
 
 // Whole-show simulations: well under a second locally, but CI runners are slower.
-describe('welcome showcase', { timeout: 30_000 }, () => {
-  it('builds a deterministic, already-busy scene from the catalog', () => {
-    const first = buildWelcomeScene();
-    expect(first).toEqual(buildWelcomeScene());
-    expect(first.size).toBeGreaterThan(800);
+describe('trailer world', { timeout: 60_000 }, () => {
+  it('builds a deterministic, already-busy scene from the catalog, title left out', () => {
+    const first = buildWelcomeScene(false, false);
+    expect(first).toEqual(buildWelcomeScene(false, false));
+    expect(first.size).toBeGreaterThan(5000);
     expect(first.size).toBeLessThan(WELCOME_CELL_CAP);
-    expect(first).not.toEqual(showcaseSeed());
+    expect(first).not.toEqual(showcaseSeed(false, false));
+    expect([...showcaseSeed(false, false)].filter(inTitle)).toEqual([]);
   });
 
-  it('writes cute life in isolated still lifes that never change', () => {
+  it('writes cute life in isolated still lifes that never change, eight letters in order', () => {
     const letters = welcomeLettering();
     let cells = letters;
     for (let i = 0; i < 200; i++) cells = step(cells);
     expect(cells).toEqual(letters);
+    const parts = welcomeLetters();
+    expect(parts).toHaveLength(8);
+    parts.slice(1).forEach((p, i) => expect(Math.min(...p.map(([x]) => x))).toBeGreaterThan(Math.max(...parts[i].map(([x]) => x))));
+    expect([...letters].every(inTitle)).toBe(true);
   });
 
-  it('has genuinely interacting glider streams in the world shot, and starts genesis on blank paper', () => {
-    const scene = buildWelcomeScene();
+  it('has genuinely interacting glider streams during the build, and starts genesis on blank paper', () => {
+    const scene = buildWelcomeScene(false, false);
     expect([...scene].filter((k) => Math.abs(keyX(k) - WELCOME_GENESIS.x) < 15 && Math.abs(keyY(k) - WELCOME_GENESIS.y) < 10)).toEqual([]);
-    let combined = showcaseSeed();
+    let combined = showcaseSeed(false, false);
     let isolated = SHOWCASE_BATTERIES.map((gun) => {
       let cells = fromList(welcomePattern('gosperglidergun', 0, 0));
       for (let i = 0; i < gun.phase; i++) cells = step(cells);
       return fromList(toList(cells).map(([x, y]) => [gun.x + x * (gun.flipX ? -1 : 1), gun.y + y * (gun.flipY ? -1 : 1)]));
     });
-    for (let i = 0; i < WELCOME_PRE_ADVANCE + welcomeGeneration(5); i++) {
+    for (let i = 0; i < WELCOME_PRE_ADVANCE + trailerGeneration(at(3)); i++) {
       combined = step(combined); isolated = isolated.map(step);
     }
     const uncollided = new Set(isolated.flatMap((cells) => [...cells]));
@@ -67,124 +55,70 @@ describe('welcome showcase', { timeout: 30_000 }, () => {
     expect(activeCorridors.length).toBeGreaterThanOrEqual(3);
   });
 
-  it.each([false, true])('bounds population, protects the lettering and measures median generation time (small=%s)', (small) => {
-    let cells = showcaseSeed(small);
-    let peak = cells.size;
-    const title = welcomeLettering();
+  it('bounds the population and keeps generations cheap for the whole trailer', () => {
+    let cells = withGenesis(buildWelcomeScene(false, false));
     const timings: number[] = [];
-    const populations: number[] = [];
-    let warmSize = 0;
-    for (let i = 0; i < WELCOME_PRE_ADVANCE + welcomeGeneration(WELCOME_SECONDS); i++) {
-      if (i === WELCOME_PRE_ADVANCE) {
-        warmSize = cells.size;
-        populations.push(cells.size);
-        cells = new Set([...cells, ...fromList(welcomePattern('rpentomino', WELCOME_GENESIS.x, WELCOME_GENESIS.y))]);
-      }
+    let low = Infinity, peak = 0;
+    for (let i = 0; i < trailerGeneration(TRAILER_SECONDS); i++) {
       const start = performance.now();
       cells = step(cells);
-      if (i >= WELCOME_PRE_ADVANCE) {
-        timings.push(performance.now() - start);
-        populations.push(cells.size);
-      }
-      peak = Math.max(peak, cells.size);
-      expect(cells.size).toBeLessThan(small ? WELCOME_SMALL_CAP : WELCOME_CELL_CAP);
-      const centre = new Set([...cells].filter((k) => keyX(k) >= -130 && keyX(k) <= 130 && Math.abs(keyY(k)) <= 23));
-      expect(centre).toEqual(title);
+      timings.push(performance.now() - start);
+      low = Math.min(low, cells.size); peak = Math.max(peak, cells.size);
+      expect(cells.size).toBeLessThan(WELCOME_CELL_CAP);
     }
     const median = timings.sort((a, b) => a - b)[Math.floor(timings.length / 2)];
-    populations.sort((a, b) => a - b);
-    expect(populations[0]).toBeGreaterThanOrEqual(small ? 3000 : 7000);
-    expect(populations.at(-1)).toBeLessThanOrEqual(small ? 4000 : 10000);
+    expect(low).toBeGreaterThanOrEqual(7000);
+    expect(peak).toBeLessThanOrEqual(10000);
     expect(median).toBeLessThan(Boolean((globalThis as { process?: { env?: { CI?: string } } }).process?.env?.CI) ? 40 : 12);
-    console.info(`Welcome ${small ? 'small' : 'full'}: population min/median/peak ${populations[0]}/${populations[Math.floor(populations.length / 2)]}/${populations.at(-1)}, warm ${warmSize}, warmup + show peak ${peak}, final ${cells.size}, step median ${median.toFixed(3)} ms`);
   });
 
-  it.each([false, true])('fills the visible world throughout both wide shots (small=%s)', (small) => {
-    let cells = buildWelcomeScene(small);
-    cells = new Set([...cells, ...fromList(welcomePattern('rpentomino', WELCOME_GENESIS.x, WELCOME_GENESIS.y))]);
-    let generation = 0;
-    const world = WELCOME_SHOTS.find((shot) => shot.name === 'world')!;
-    const times = [
-      ...Array.from({ length: 28 }, (_, i) => world.start + i / 8), world.end - 0.001,
-      ...Array.from({ length: 9 }, (_, i) => 15 + i / 8),
-    ];
-    const screens = [[1280, 720], [360, 780], [844, 390], [1280, 800]];
-    const coverages = screens.map(() => [] as number[]);
-    for (const seconds of times) {
-      while (generation < welcomeGeneration(seconds)) { cells = step(cells); generation++; }
-      const points = toList(cells);
-      const minX = Math.min(...points.map(([x]) => x)), maxX = Math.max(...points.map(([x]) => x));
-      const minY = Math.min(...points.map(([, y]) => y)), maxY = Math.max(...points.map(([, y]) => y));
-      screens.forEach(([width, height], index) => {
-        const coverage = screenCoverage(cells, seconds, width, height);
-        expect(coverage, `${seconds}s at ${width} × ${height}`).toBeGreaterThanOrEqual(0.6);
-        // The camera never exposes a bare strip beyond the field's 20-cell activity halo.
-        const camera = welcomeCamera(seconds, width, height);
-        expect(camera.x - width / camera.zoom / 2).toBeGreaterThanOrEqual(minX - 20);
-        expect(camera.x + width / camera.zoom / 2).toBeLessThanOrEqual(maxX + 20);
-        expect(camera.y - height / camera.zoom / 2).toBeGreaterThanOrEqual(minY - 20);
-        expect(camera.y + height / camera.zoom / 2).toBeLessThanOrEqual(maxY + 20);
-        coverages[index].push(coverage);
-      });
+  it('lands the title on clean paper and keeps it intact to the last frame', () => {
+    let cells = withGenesis(buildWelcomeScene(false, false));
+    const letters = welcomeLetters();
+    let generation = 0, popped = 0;
+    const end = trailerGeneration(TRAILER_SECONDS);
+    while (generation < trailerGeneration(at(8, 2))) { cells = step(cells); generation++; }
+    // The show wipes the footprint (including the hush blinker) right before the first letter.
+    cells = new Set([...cells, ...fromList([...HUSH_BLINKER])].filter((k) => !inTitle(k)));
+    for (; generation <= end; generation++) {
+      const t = LETTER_POPS.findIndex((p) => trailerGeneration(p) > generation);
+      const due = t === -1 ? letters.length : t;
+      for (; popped < due; popped++) cells = new Set([...cells, ...fromList(letters[popped])]);
+      expect(new Set([...cells].filter(inTitle)), `generation ${generation}`).toEqual(new Set(letters.slice(0, popped).flat().map(([x, y]) => key(x, y))));
+      cells = step(cells);
     }
-    console.info(`Welcome ${small ? 'small' : 'full'} coverage min/max: ${screens.map(([w, h], i) => `${w}×${h} ${(Math.min(...coverages[i]) * 100).toFixed(1)}–${(Math.max(...coverages[i]) * 100).toFixed(1)}%`).join(', ')}`);
   });
 
-  it.each([false, true])('preserves the genesis and magnifier performances (small=%s)', (small) => {
-    let cells = buildWelcomeScene(small);
+  it('keeps the genesis bloom and the magnifier gun undisturbed while they are on screen', () => {
+    let cells = withGenesis(buildWelcomeScene(false, false));
     let genesis = fromList(welcomePattern('rpentomino', WELCOME_GENESIS.x, WELCOME_GENESIS.y));
-    cells = new Set([...cells, ...genesis]);
     let gun = fromList(welcomePattern('gosperglidergun', SHOWCASE_GUNS[0].x, SHOWCASE_GUNS[0].y));
     for (let i = 0; i < WELCOME_PRE_ADVANCE; i++) gun = step(gun);
-    for (let generation = 0; generation <= welcomeGeneration(13.5); generation++) {
-      if (generation <= welcomeGeneration(2.5)) {
+    for (let generation = 0; generation <= trailerGeneration(at(5, 2)); generation++) {
+      if (generation <= trailerGeneration(at(2))) {
         const onStage = (k: number) => Math.abs(keyX(k) - WELCOME_GENESIS.x) < 15 && Math.abs(keyY(k) - WELCOME_GENESIS.y) < 10;
         expect(new Set([...cells].filter(onStage))).toEqual(new Set([...genesis].filter(onStage)));
       }
-      if (generation >= welcomeGeneration(8)) {
+      if (generation >= trailerGeneration(at(4))) {
         const core = (k: number) => keyX(k) >= -155 && keyX(k) <= -115 && keyY(k) >= -110 && keyY(k) <= -90;
         expect(new Set([...cells].filter(core))).toEqual(new Set([...gun].filter(core)));
       }
       cells = step(cells); genesis = step(genesis); gun = step(gun);
     }
   });
-});
 
-describe('welcome camera shot list', () => {
-  it.each([[1280, 800], [360, 780], [844, 390]])('starts with faces and ends with a legible whole world at %s × %s', (w, h) => {
-    expect(welcomeCamera(0, w, h)).toEqual({ ...WELCOME_GENESIS, zoom: 44 });
-    expect(welcomeCamera(WELCOME_SECONDS, w, h)).toEqual({ x: 0, y: 0, zoom: welcomeWideZoom(w, h) });
-    expect(welcomeCamera(7, w, h).zoom).toBeGreaterThanOrEqual(4);
-    expect(welcomeCamera(7, w, h).zoom).toBeLessThan(13);
-    expect(welcomeCamera(12, w, h).zoom).toBe(44);
-    const reveal = welcomeCamera(WELCOME_SECONDS, w, h);
-    for (const [x, y] of toList(welcomeLettering())) {
-      expect(Math.abs((x - reveal.x) * reveal.zoom)).toBeLessThan(w / 2 - 8);
-      expect(Math.abs((y - reveal.y) * reveal.zoom)).toBeLessThan(h / 2 - 8);
+  it.each([[1920, 1080], [1080, 1920]])('fills every montage shot with life (%s × %s)', (w, h) => {
+    const minimum: Record<string, number> = { gun: 36, chaos: 150, fleet: 100, pulsars: 40, armada: 800, bloom: 100 };
+    let cells = withGenesis(buildWelcomeScene(false, false));
+    let generation = 0;
+    for (const shot of MONTAGE) {
+      const t = shot.start + BEAT;
+      while (generation < trailerGeneration(t)) { cells = step(cells); generation++; }
+      const cam = Object.assign(new Camera(), trailerFrame(t, w, h, generation).camera, { w, h });
+      const [x0, y0] = cam.toWorld(0, 0), [x1, y1] = cam.toWorld(w, h);
+      const visible = [...cells].filter((k) => keyX(k) >= x0 && keyX(k) <= x1 && keyY(k) >= y0 && keyY(k) <= y1).length;
+      expect(visible, shot.name).toBeGreaterThanOrEqual(minimum[shot.name]);
     }
-  });
-
-  it.each(['lens', 'dive'] as const)('has no camera jumps except declared, flashed whip cuts (%s)', (transition) => {
-    const eps = 0.00001;
-    for (const t of [1.25, ...WELCOME_SHOTS.slice(1).map((shot) => shot.start), 9.6, 15.4, 16]) {
-      const before = welcomeLensTimeline(t - eps, 1280, 800, transition);
-      const after = welcomeLensTimeline(t + eps, 1280, 800, transition);
-      const cut = WELCOME_SHOTS.find((shot) => shot.start === t)?.cut;
-      if (cut) {
-        expect(welcomeLensTimeline(t, 1280, 800, transition).flashAlpha).toBe(1);
-        expect(Math.hypot(after.main.x - before.main.x, after.main.y - before.main.y)).toBeGreaterThan(50);
-      } else for (const prop of ['x', 'y', 'zoom'] as const) expect(Math.abs(after.main[prop] - before.main[prop])).toBeLessThan(0.01);
-    }
-  });
-
-  it('clamps time, stages the genesis and gives each shot its own caption', () => {
-    expect(welcomeCamera(-100)).toEqual(welcomeCamera(0));
-    expect(welcomeCamera(100)).toEqual(welcomeCamera(WELCOME_SECONDS));
-    expect(WELCOME_SHOTS.map((shot) => welcomeBeat(shot.start))).toEqual([0, 1, 2, 3, 4, 5]);
-    expect(welcomeGeneration(1.1)).toBe(0);
-    expect(welcomeGeneration(2.2)).toBe(12);
-    expect(welcomeGeneration(12.5) - welcomeGeneration(11.5)).toBe(4);
-    expect(welcomeGeneration(16)).toBe(153);
   });
 });
 
@@ -212,7 +146,7 @@ describe('borrowing the sandbox', () => {
     expect(playing).toBe(false);
     expect(following).toBe(false);
     sim.advance(200);
-    Object.assign(cam, welcomeCamera(10));
+    Object.assign(cam, { x: -128, y: -97, zoom: 40 });
     const showVersion = sim.version;
     restore();
     for (const prop of Object.keys(saved) as (keyof typeof saved)[]) expect(sim[prop]).toBe(saved[prop]);
@@ -222,54 +156,5 @@ describe('borrowing the sandbox', () => {
     expect(sim.version).toBeGreaterThan(showVersion);
     restore();
     expect(refreshed).toBe(1);
-  });
-});
-
-
-describe('magnifying glass and dive', () => {
-  it.each([[1280, 800], [2560, 1440], [600, 600], [360, 780]])('hands the iris to the identical main camera at %s × %s', (w, h) => {
-    const landing = welcomeLensTimeline(WELCOME_ZOOM_END, w, h);
-    expect(landing.main).toEqual(landing.lens);
-    expect(landing.main).toEqual({ ...WELCOME_FOCUS, zoom: 44 });
-    expect(landing.radius).toBeGreaterThanOrEqual(Math.hypot(w / 2, h / 2));
-    expect(landing.lensVisible).toBe(false);
-    const before = welcomeLensTimeline(WELCOME_ZOOM_END - 0.00001, w, h);
-    expect(before.lens.x).toBeCloseTo(landing.main.x, 5);
-    expect(before.lens.y).toBeCloseTo(landing.main.y, 5);
-  });
-
-  it('keeps the sampled world underneath the lens and grows the iris monotonically', () => {
-    let previousRadius = 0;
-    for (let t = 8; t <= 10.5; t += 0.002) {
-      const frame = welcomeLensTimeline(t, 1280, 800);
-      expect(frame.lens.zoom).toBeGreaterThan(17);
-      expect(frame.world.x).toBeCloseTo(frame.lens.x + (frame.sx - 640) / frame.lens.zoom);
-      expect(frame.world.y).toBeCloseTo(frame.lens.y + (frame.sy - 400) / frame.lens.zoom);
-      if (t >= WELCOME_IRIS_START) expect(frame.radius).toBeGreaterThanOrEqual(previousRadius);
-      previousRadius = frame.radius;
-    }
-  });
-
-  it.each([8.35, 9.6, 10.05, 10.5])('keeps circle geometry continuous around %s seconds', (t) => {
-    const before = welcomeLensTimeline(t - 0.00001, 1280, 800);
-    const after = welcomeLensTimeline(t + 0.00001, 1280, 800);
-    for (const prop of ['sx', 'sy', 'radius', 'inkAlpha'] as const) expect(Math.abs(after[prop] - before[prop])).toBeLessThan(0.05);
-  });
-
-  it.each([[1280, 800], [360, 780], [844, 390]])('flashes when the dive reaches full faces at %s × %s', (w, h) => {
-    const switchAt = welcomeSemanticSwitch(w, h);
-    expect(welcomeCamera(switchAt, w, h).zoom).toBeCloseTo(17, 6);
-    expect(welcomeLensTimeline(switchAt, w, h, 'dive').flashAlpha).toBe(1);
-    expect(welcomeLensTimeline(switchAt - 0.12, w, h, 'dive').flashAlpha).toBe(0);
-    expect(welcomeLensTimeline(switchAt + 0.12, w, h, 'dive').flashAlpha).toBe(0);
-    expect(welcomeLensTimeline(9, w, h, 'dive').lensVisible).toBe(false);
-  });
-
-  it('selects the cheaper dive for touch, small screens or slow measured frames', () => {
-    expect(welcomeUsesDive(1280, 800, false, 28)).toBe(false);
-    expect(welcomeUsesDive(1280, 800, false, 28.01)).toBe(true);
-    expect(welcomeUsesDive(1280, 800, true)).toBe(true);
-    expect(welcomeUsesDive(599, 800, false)).toBe(true);
-    expect(welcomeUsesDive(800, 599, false)).toBe(true);
   });
 });

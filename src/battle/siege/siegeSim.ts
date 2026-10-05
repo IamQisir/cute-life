@@ -4,26 +4,26 @@ import { army, type Prefabs, type Stamp } from './prefabs';
 export interface Rect { x0: number; y0: number; x1: number; y1: number }
 export interface SiegeRules {
   width: number; height: number; generations: number; budget: number;
-  scoring: 'hp' | 'capture'; threshold: number; hold: number;
+  scoring: 'hp' | 'capture' | 'births'; threshold: number; hold: number;
   hitbox: number; hp: number; cap: number; unitsPerHP: number; halo: number;
   redCrystal: Pt; blueCrystal: Pt; redZone: Rect; blueZone: Rect;
 }
 export const DEFAULT_RULES: SiegeRules = {
   width: 128, height: 96, generations: 640, budget: 72,
-  scoring: 'hp', threshold: 0.4, hold: 16,
-  hitbox: 12, hp: 64, cap: 8, unitsPerHP: 16, halo: 2,
+  scoring: 'births', threshold: 0.4, hold: 16,
+  hitbox: 12, hp: 48, cap: 8, unitsPerHP: 8, halo: 2,
   redCrystal: [40, 48], blueCrystal: [88, 48],
   redZone: { x0: 4, x1: 59, y0: 4, y1: 91 },
   blueZone: { x0: 68, x1: 123, y0: 4, y1: 91 },
 };
 export interface CrystalState {
   hp: number; accumulator: number; units: number; firstContact: number | null; killGen: number | null;
-  /** Capture-only observations; absent in HP mode to preserve its state contract. History starts at gen 0. */
+  /** Capture-only observations; absent in damage modes to preserve their state contract. History starts at gen 0. */
   captureFraction?: number; captureHistory?: number[]; holdCount?: number; captureGen?: number | null;
 }
 export interface SiegeState { paint?: Paint; grid: Grid; generation: number; red: CrystalState; blue: CrystalState; winner: Winner | null }
 export function validateRules(rules: SiegeRules): void {
-  if (rules.scoring !== 'hp' && rules.scoring !== 'capture') throw new RangeError('Invalid siege scoring');
+  if (rules.scoring !== 'hp' && rules.scoring !== 'capture' && rules.scoring !== 'births') throw new RangeError('Invalid siege scoring');
   if (!Number.isFinite(rules.threshold) || rules.threshold <= 0 || rules.threshold > 1) throw new RangeError('Invalid siege threshold');
   if (!Number.isSafeInteger(rules.hold) || rules.hold < 0) throw new RangeError('Invalid siege hold');
   for (const key of ['width', 'height', 'hitbox', 'hp', 'cap', 'unitsPerHP'] as const) {
@@ -82,8 +82,12 @@ export function initialState(rules: SiegeRules, grid = emptyGrid(arenaConfig(rul
   }
   return state;
 }
-/** Observe only; both updates finish before deciding. Units track capped exposure, even after HP is zero. */
-export function observe(rules: SiegeRules, state: SiegeState): SiegeState {
+/** Observe only; both updates finish before deciding. Births requires the preceding grid.
+ * Units track capped exposure or births, even after HP is zero in diagnostic continuation. */
+export function observe(rules: SiegeRules, state: SiegeState, previousGrid?: Grid): SiegeState {
+  if (rules.scoring === 'births' && (!previousGrid || previousGrid.length !== state.grid.length)) {
+    throw new RangeError('Births scoring requires the previous generation grid');
+  }
   if (rules.scoring === 'capture') {
     if (!state.paint) throw new RangeError('Missing siege paint');
     const paint = state.paint.slice();
@@ -113,7 +117,9 @@ export function observe(rules: SiegeRules, state: SiegeState): SiegeState {
     const box = crystalRect(rules, team);
     let enemies = 0;
     for (let y = box.y0; y <= box.y1; y++) for (let x = box.x0; x <= box.x1; x++) {
-      if (state.grid[y * rules.width + x] === (team === RED ? BLUE : RED)) enemies++;
+      const i = y * rules.width + x;
+      if (state.grid[i] === (team === RED ? BLUE : RED)
+        && (rules.scoring !== 'births' || previousGrid![i] === 0)) enemies++;
     }
     const units = Math.min(enemies, rules.cap);
     const accumulated = old.accumulator + units;
@@ -128,7 +134,7 @@ export function observe(rules: SiegeRules, state: SiegeState): SiegeState {
 }
 export function stepSiege(rules: SiegeRules, state: SiegeState): SiegeState {
   return observe(rules, { ...state, generation: state.generation + 1,
-    grid: stepGrid(state.grid, rules.width, rules.height, false, false) });
+    grid: stepGrid(state.grid, rules.width, rules.height, false, false) }, state.grid);
 }
 export function simulateGrid(rules: SiegeRules, grid: Grid, fullHorizon = false): SiegeState {
   let state = initialState(rules, grid);

@@ -7,7 +7,7 @@ a big army"), Codex design review (xhigh, with in-engine experiments), Claude re
 ## 1. Summary
 
 Both sides secretly deploy an army of famous Life structures, then watch.
-Each side has a **crystal**. Enemy creatures inside your crystal crack it; the
+Each side has a **crystal**. Enemy cells born inside your crystal crack it; the
 first crystal to break loses. Attack from range with a **gun** that fires real
 gliders, rush with **spaceships**, sabotage with **methuselahs**, and defend
 with **eaters** that really eat incoming gliders.
@@ -81,13 +81,19 @@ portrait geometry is superseded; its timings are not landscape fixtures.
 
 ### 3.2 Crystals and damage
 
-- Two crystals, **64 HP** each, **12×12 hitbox**, transparent to Life.
-- After each generation: `acc += min(enemyCellsInsideHitbox, 8)`; every
-  **16** accumulated units remove **1 HP** (remainder kept). No healing.
-- Enemy = the cell's **current** grid colour (not who deployed it). Friendly
-  cells and paint never damage.
+- Two crystals, **48 HP** each, **12×12 hitbox**, transparent to Life.
+- Adopted damage rule: **births**. After each generation, count sites inside
+  the hitbox that are alive now, were dead in the preceding grid, and have
+  the enemy colour after Immigration. Survivors never score.
+- `acc += min(enemyBirthsInsideHitbox, 8)`; every **8** accumulated units
+  remove **1 HP** (remainder kept). No healing; generation-zero seeds do not score.
+- Enemy = the newborn's **current** grid colour (not who deployed its parents).
+  Friendly births, paint, and stationary ash never damage.
 - Both crystals are damaged from the same generation **before** the result is
-  decided.
+  decided. B3/S23 and Immigration remain unchanged.
+- HP exposure and base capture were tested and remain selectable headless
+  observers. See [the adopted births results](crystal-siege-experiments.md#births-rule-adopted)
+  and [the capture experiment](crystal-siege-experiments.md#capture-rule-owner-proposal).
 
 ### 3.3 End of the match
 1. A crystal reaches 0 HP → that side loses; both at once → draw.
@@ -95,8 +101,8 @@ portrait geometry is superseded; its timings are not landscape fixtures.
 - Extinction does **not** end the match (an army can vanish after decisive
   damage).
 - The garden mode's still-life/period-2 early exit is **not** used as-is:
-  stationary enemy ash inside a crystal keeps damaging it. Any fast-forward
-  must carry HP and accumulator state.
+  stationary ash scores zero, but oscillators continue producing newborns.
+  Any fast-forward must carry HP and accumulator state and account for births.
 
 ### 3.4 Budget and units
 
@@ -131,7 +137,7 @@ variant is deferred.
 ### 3.6 Playback
 8 gen/s, 1.4 s reveal, slow final 24 generations, short result hold. A
 640-generation match is ≈ 87 s including pauses; the certified landscape
-gun kills at gen 388 (48.5 s of evolution).
+gun kills at gen 367 (45.875 s of evolution) with the adopted births settings.
 
 ## 4. Life facts the design relies on
 
@@ -146,18 +152,20 @@ Full coordinates and generation horizons are in the
 | Red glider → supplied blue Snark catalogue fixture | Outgoing glider stays red; block turns red; gen 150 has 48 blue + 4 red catalyst cells and a 5-cell red glider. Historical 45-blue catalyst count not reproduced by this supplied RLE |
 | Red glider → blue buckaroo | Outgoing glider stays red; oscillator back to 23 blue cells at gen 150 |
 | Red glider → blue block, offsets −8…8 | Miss (5 red + 4 blue), surviving blue block, mutual annihilation, or large all-red reactions |
-| Unopposed upper/lower vertical Gosper gun | First crystal contact gen 108; 64-HP crystal destroyed at gen 388 |
-| Unopposed upper/lower horizontal Gosper gun | First contact gen 162; destroyed at gen 442 |
-| 5-LWSS rush (45 cells), two legal rear launch rails | 33 HP lost over 640 gens; does **not** kill (portrait's 45-HP train result is superseded) |
+| Unopposed upper/lower vertical Gosper gun | Births contact 108; 48-HP crystal destroyed 367 (45.875 s) |
+| Unopposed upper/lower horizontal Gosper gun | Births contact 162; destroyed 421 (52.625 s) |
+| 5-LWSS rush (45 cells), two legal rear launch rails | Births tournament rush vs gun kills at 167; placements and interaction-specific outcomes in the results |
 | Blue eater at certified upper port (69,35), orientation 0 | **Blocks completely for 640 gens**; first disturbance 52, recovery 54, ends as 7 blue cells, zero recolouring |
-| Gun + best-found 4-LWSS escort (72 cells total) vs that eater | First contact 128, kill 268; last original blue eater cell at gen 53, no blue population at 640. Friendly gun also breaks; the combined reaction supplies the damage |
+| Gun + old fastest HP 4-LWSS escort (72 cells) vs that eater | Births contact 128, 17 HP lost, no kill; final birth 171. Settled ash no longer damages |
 
-The release gate is **YES** for this geometry at the original crystal/budget
-numbers. The four-LWSS escort search damaged in 792/3269 legal cases (24.2%)
-and killed in 114/3269 (3.5%). This is finite search coverage, not a universal
-counter. Gun-preserving alternatives and whole-budget attacks are reported
-separately. The small template tournament does not yet meet the broader
-§9 damage/destruction/style-balance targets.
+The release gate is **YES** with the adopted births settings: the gun kills,
+the aligned eater stops it, and an exact 72-vs-72 gun-dependent assault kills
+a functioning gun+eater defence at 217 (27.125 s), drawing without its gun.
+The fastest searched 72-cell assaults kill an eater at 156 and a 43-cell
+functioning gun+eater core at 149, but these fastest escorts also win alone.
+See the [births tables](crystal-siege-experiments.md#births-rule-adopted) for
+placements, costs, and finite search coverage. The small template tournament
+meets the three-style target but misses the §9 damage/destruction targets.
 
 Consequences:
 - An aligned eater is a reliable defence; a wrong-side hit has no guarantee.
@@ -244,14 +252,15 @@ prefab fails atomically) and a fixed event → step → damage order.
 | Eater matrix | orientations/ports, timing shifts, lane offsets; recovery, recolouring, leakage |
 | Assault matrix | LWSS phases, stagger, lanes vs eaters and blocks; defender removal, onward damage |
 | Composition interference | each recipe alone vs combined; friendly collisions, blocked launches |
-| Crystal sweep | hitbox 10/12/14, HP 48/64/80, cap 4/8/12; kill time, rush damage, ash damage |
+| Crystal sweep | hitbox 10/12/14 × HP 32/48/64 × cap 4/8/12 × units/HP 4/8/16; birth damage and kill time |
 | Army tournament | gun, rush, growth, defence, hybrids; draws, side bias, dominant recipes |
 | Replay parity | identical grids, HP, accumulators, end gen, winner headless vs visible |
 | Performance | AI p50/p95, sim time, frame time on a mid-range phone |
 
 Look for: an unbeatable cheap defence; an uncontestable gun alignment;
-methuselah spam beating recognisable units; stationary enemy ash as the
-dominant attack; wins from boundary debris; AI overfitting its samples.
+methuselah spam beating recognisable units; oscillator farms inside crystals;
+wins from boundary debris; AI overfitting its samples. Stationary ash no
+longer scores; evolving collision debris and oscillators still can.
 
 **Playtest gates**
 - ≥ 80% of matches damage a crystal; ≥ 60% end in destruction, not timeout.
@@ -272,6 +281,11 @@ eater stops it, and an equal-budget assault can contest that eater.*
 | 2. Polish | snapping + trajectory previews; firing/bite/crack effects; unit-level AI in a Web Worker; versioned links | L | both |
 | 3. Balance | tournament + first player playtests against the gates | L | both |
 
+**Phase 1 UI:** show accumulated damage by gradually turning each crystal
+its attacker's colour, proportional to `HP lost / starting HP` (0% at full
+HP, 100% at destruction). Viewers should read progress like a capture; the
+colour is a display of birth damage and never feeds back into scoring.
+
 ## 11. Decisions and follow-up
 
 1. **Phasing — decided**: Phase 0 headless experiments are complete; build
@@ -281,19 +295,21 @@ eater stops it, and an equal-budget assault can contest that eater.*
    deployment geometry from §3.1. Both diagonal gun mounts are re-validated.
 3. **Garden battle — decided**: remains a separate mode. Phase 0 has no UI
    imports and changes no garden/sandbox behaviour or existing link formats.
-4. **Starting rules — retained for Phase 1**: 64 HP, 12×12, cap 8,
-   16 units/HP, 72-cell budget, catalogue seed costs, two-cell exclusion halo.
+4. **Starting rules — re-tuned for Phase 1**: 48 HP, 12×12, cap 8,
+   8 units/HP, 72-cell budget, catalogue seed costs, two-cell exclusion halo.
    The release gate passes without raising eater cost or changing Life.
 5. **Balance/readability — open**: the small deterministic tournament falls
    below §9's broader playtest targets. Expand army templates and held-out
-   ports, inspect stationary ash and friendly machinery interference, then
+   ports, inspect growth/oscillator pressure and friendly machinery interference, then
    measure visible/headless parity, worker performance and phone playback.
    Finite searches at one certified port do not prove universal counterplay.
 
-6. **Capture vs HP — open**: owner-colour base painting is available as a
-   headless experiment alongside unchanged HP scoring. See
-   [Capture rule (owner proposal)](crystal-siege-experiments.md#capture-rule-owner-proposal)
-   for the sweep, release gates, ash/timeout limitations, and proposed parameters.
+6. **Damage — decided: births rule**: only enemy newborns in the hitbox
+   accumulate damage. HP exposure rewarded static ash; capture weakened the
+   gun and rewarded cheap broad paint. Births passes the mechanical release
+   gate; the broader balance targets remain open. See
+   [Births rule (adopted)](crystal-siege-experiments.md#births-rule-adopted).
+
 
 ## References
 - LifeWiki: [Gosper glider gun](https://conwaylife.com/wiki/Gosper_glider_gun),

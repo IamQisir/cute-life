@@ -4,6 +4,9 @@ import { UNIT_IDS, army, normalize, orient, phase, stamp, type Orientation, type
 import { DEFAULT_RULES, arenaConfig, initialState, observe, simulate, simulateGrid, stepSiege, validateArmy,
   type Rect, type SiegeRules, type SiegeState } from './siegeSim';
 
+// Freeze the original HP experiment contract when the playable default changes.
+export const HP_RULES: SiegeRules = { ...DEFAULT_RULES, scoring: 'hp', hitbox: 12, hp: 64, cap: 8, unitsPerHP: 16 };
+
 export const UPPER_GUN: Stamp = { id: 'gosperglidergun', x: 51, y: 4, orientation: 7 };
 export const LOWER_GUN: Stamp = { id: 'gosperglidergun', x: 51, y: 56, orientation: 3 };
 export const UPPER_EATER: Stamp = { id: 'eater1', x: 69, y: 35, orientation: 0 };
@@ -20,7 +23,7 @@ export interface Table { title: string; headers: string[]; rows: (string | numbe
 export interface ExperimentReport { tables: Table[]; gate: boolean; recipes: Record<string, Stamp[]> }
 export const textRecipe = (units: Stamp[]): string => units.map(u => `${u.id}@${u.x},${u.y}/o${u.orientation ?? 0}`).join('; ');
 export const percent = (n: number, d: number): string => `${n}/${d} (${d ? (100*n/d).toFixed(1) : '0.0'}%)`;
-const metrics = (s: SiegeState): (number | string | null)[] => [s.blue.firstContact, s.blue.killGen, DEFAULT_RULES.hp - s.blue.hp, s.blue.units, s.red.hp];
+const metrics = (s: SiegeState): (number | string | null)[] => [s.blue.firstContact, s.blue.killGen, HP_RULES.hp - s.blue.hp, s.blue.units, s.red.hp];
 function localCounts(grid: Grid, box: Rect, team: Team, width = 128): number {
   let n = 0;
   for(let y=box.y0;y<=box.y1;y++)for(let x=box.x0;x<=box.x1;x++)if(grid[y*width+x]===team)n++;
@@ -45,7 +48,7 @@ export function mirrorArmy(p: Prefabs, units: Stamp[]): Stamp[] {
     return {...u,x:127-x1,y:u.y,orientation};
   });
 }
-export function traceFixture(p:Prefabs,red:Stamp[],blue:Stamp[],rules=DEFAULT_RULES) {
+export function traceFixture(p:Prefabs,red:Stamp[],blue:Stamp[],rules=HP_RULES) {
   let s=initialState(rules,placeArmies(arenaConfig(rules),army(p,red),army(p,blue)));
   let firstDisturbed:number|null=null,recovered:number|null=null,lastOriginalBlueGen=0;
   const e=blue.find(u=>u.id==='eater1');
@@ -63,7 +66,7 @@ export function traceFixture(p:Prefabs,red:Stamp[],blue:Stamp[],rules=DEFAULT_RU
 
 /** Compare complete core and post-port windows, every generation 321…640. */
 export function lateStreamComparison(p: Prefabs, escort: Stamp[]) {
-  const r = DEFAULT_RULES;
+  const r = HP_RULES;
   let solo = initialState(r, placeArmies(arenaConfig(r), stamp(p, UPPER_GUN), []));
   let combined = initialState(r, placeArmies(arenaConfig(r), army(p, [UPPER_GUN, ...escort]), stamp(p, UPPER_EATER)));
   let coreMatches = 0, streamMatches = 0;
@@ -111,7 +114,7 @@ export function* whole():Generator<Stamp[]> {
 
 /** Exhaustive finite Cartesian searches; success means exposure, kill means <=640. No random sampling. */
 export function runExperiments(p: Prefabs, extraRle: {snark:string;buckaroo:string}, progress: (s:string)=>void = ()=>{}): ExperimentReport {
-  const r=DEFAULT_RULES,tables:Table[]=[],recipes:Record<string,Stamp[]>={gun:[UPPER_GUN],eater:[UPPER_EATER],initialBest:BEST_ESCORT};
+  const r=HP_RULES,tables:Table[]=[],recipes:Record<string,Stamp[]>={gun:[UPPER_GUN],eater:[UPPER_EATER],initialBest:BEST_ESCORT};
   const table=(title:string,headers:string[],rows:Table['rows'])=>tables.push({title,headers,rows});
   table('Canonical prefab catalogue',['Unit','Cost','Footprint','Phase populations 0/1/2/3'],UNIT_IDS.map(id=>[id,p[id].cost,`${p[id].width}×${p[id].height}`,
     id==='lwss'||id==='glider'? [0,1,2,3].map(g=>phase(p[id].cells,g).length).join('/'):'seed only']));

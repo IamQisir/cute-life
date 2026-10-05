@@ -8,7 +8,7 @@ import rpentomino from '../src/life/catalog/rpentomino.rle?raw';
 import { BLUE, RED, emptyGrid, placeArmies, stepGrid, type Team } from '../src/battle/arena';
 import { army, loadPrefabs } from '../src/battle/siege/prefabs';
 import { DEFAULT_RULES, arenaConfig, crystalRect, initialState, observe, simulate, stepSiege, type SiegeState } from '../src/battle/siege/siegeSim';
-import { BEST_ESCORT, BREACH_ESCORT, UPPER_EATER, UPPER_GUN, mirrorArmy } from '../src/battle/siege/experiments';
+import { HP_RULES, BEST_ESCORT, BREACH_ESCORT, UPPER_EATER, UPPER_GUN, mirrorArmy } from '../src/battle/siege/experiments';
 import { CAPTURE_RULES as rules, CAPTURE_ATTACK, CAPTURE_PARAMETERS, captureOutcome } from '../src/battle/siege/captureExperiments';
 const prefabs = loadPrefabs({ gosperglidergun: gun, eater1: eater, lwss, glider, block, rpentomino });
 // Observer fixtures can place cells in excluded bases to isolate accounting from Life/legality.
@@ -24,8 +24,8 @@ function paintObservation(state: SiegeState, generation: number, redBaseEnemies:
 }
 
 describe('Crystal Siege capture scoring', { timeout: 60_000 }, () => {
-  it('defaults to HP and paints each base in its owner colour at generation zero', () => {
-    expect(DEFAULT_RULES.scoring).toBe('hp');
+  it('keeps capture opt-in and paints each base in its owner colour at generation zero', () => {
+    expect(DEFAULT_RULES.scoring).not.toBe('capture');
     const grid = emptyGrid(arenaConfig(rules));
     grid[48 * 128 + 88] = RED; // Even a diagnostic enemy seed cannot override owner initialization.
     const s = initialState(rules, grid);
@@ -39,9 +39,9 @@ describe('Crystal Siege capture scoring', { timeout: 60_000 }, () => {
   });
   it('keeps Immigration evolution identical with HP, capture, and direct Life over the full horizon', () => {
     const grid = placeArmies(arenaConfig(rules), army(prefabs, [UPPER_GUN, ...BEST_ESCORT]), army(prefabs, [UPPER_EATER]));
-    let hp = initialState(DEFAULT_RULES, grid), capture = initialState(rules, grid), reference = grid;
+    let hp = initialState(HP_RULES, grid), capture = initialState(rules, grid), reference = grid;
     for (let g = 1; g <= 640; g++) {
-      hp = stepSiege(DEFAULT_RULES, hp); capture = stepSiege(rules, capture);
+      hp = stepSiege(HP_RULES, hp); capture = stepSiege(rules, capture);
       reference = stepGrid(reference, 128, 96, false, false);
       // Typed-array equality without thousands of per-cell assertions.
       expect(hp.grid.every((cell, i) => cell === reference[i])).toBe(true);

@@ -8,8 +8,8 @@ import rpentomino from '../src/life/catalog/rpentomino.rle?raw';
 import { CATALOG } from '../src/life/catalog';
 import { BLUE, RED, emptyGrid, placeArmies, population, stepGrid } from '../src/battle/arena';
 import { loadPrefabs, army, stamp, type Stamp } from '../src/battle/siege/prefabs';
-import { DEFAULT_RULES as rules, arenaConfig, initialState, observe, simulate, simulateGrid, stepSiege, validateArmy } from '../src/battle/siege/siegeSim';
-import { BEST_ESCORT, BREACH_ESCORT, lateStreamComparison, LOWER_GUN, UPPER_EATER, UPPER_GUN, mirrorArmy, traceFixture } from '../src/battle/siege/experiments';
+import { arenaConfig, initialState, observe, simulate, simulateGrid, stepSiege, validateArmy } from '../src/battle/siege/siegeSim';
+import { HP_RULES as rules, BEST_ESCORT, BREACH_ESCORT, lateStreamComparison, LOWER_GUN, UPPER_EATER, UPPER_GUN, mirrorArmy, traceFixture } from '../src/battle/siege/experiments';
 const prefabs = loadPrefabs({gosperglidergun:gun,eater1:eater,lwss,glider,block,rpentomino});
 
 // Full 640-generation fixtures: fast locally, but CI runners can exceed vitest's 5 s default.

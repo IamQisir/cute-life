@@ -4,7 +4,7 @@ import { DEFAULT_RULES, arenaConfig, crystalRect, initialState, simulate, stepSi
 import { BEST_ESCORT, BREACH_ESCORT, LOWER_GUN, UPPER_EATER, UPPER_GUN, gliders, legal, mirrorArmy, mixed,
   percent, textRecipe, trains, whole, type ExperimentReport, type Table } from './experiments';
 
-export const CAPTURE_RULES: SiegeRules = { ...DEFAULT_RULES, scoring: 'capture', threshold: 0.4, hold: 16 };
+export const CAPTURE_RULES: SiegeRules = { ...DEFAULT_RULES, scoring: 'capture', hitbox: 12, hp: 64, cap: 8, unitsPerHP: 16, threshold: 0.4, hold: 16 };
 /** Fastest searched attack at CAPTURE_RULES; the gun is present, but four LWSS also capture without it. */
 export const CAPTURE_ATTACK: Stamp[] = [
   { id: 'gosperglidergun', x: 51, y: 4, orientation: 7 },

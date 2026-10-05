@@ -1,5 +1,8 @@
 # Crystal Siege Phase 0 experiments
 
+The HP and capture sections below are historical experiments. The current
+owner decision and recommendation are in [Births rule (adopted)](#births-rule-adopted).
+
 **Release gate: YES**, for the landscape geometry below and the original
 64 HP / 12×12 / cap 8 / 16 units per HP / 72-cell rules. An isolated 36-cell
 Gosper gun first contacts at generation **108**, kills at **388**. A 7-cell
@@ -1664,3 +1667,520 @@ in play, or that gun/eater warfare dominates rather than territorial chaos.
 - **recommended undefended attack** (72 cells): gosperglidergun@51,4/o7; lwss@12,56/o2; lwss@26,50/o2; lwss@40,56/o2; lwss@54,50/o2
 
 <!-- END GENERATED CAPTURE TABLES -->
+
+
+## Births rule (adopted)
+
+**Owner decision: adopt births. Release gate: YES. DEFAULT_RULES was switched
+to `scoring: 'births'`, 48 HP, 12×12 hitbox, cap 8, and 8 units/HP.** HP
+exposure and capture remain selectable; their frozen runners and fixtures
+retain the original parameters. The budget remains 72, horizon 640,
+exclusion halo 2, and playback 8 gen/s.
+
+After each generation, a scored site must be alive now, dead in the previous
+grid, inside the enemy crystal, and enemy-coloured after Immigration.
+`acc += min(enemyBirths, cap)`; each `unitsPerHP` units removes one HP with
+remainder retained. Initial seeds do not score. Both crystals update before
+death is decided; simultaneous deaths draw, otherwise 0 HP loses; at timeout
+more integer HP wins, equal HP draws. The observer never changes B3/S23 or
+Immigration. Static residents contribute **0 units / 0% of winning damage**,
+by the dead-to-alive predicate. Moving ships, oscillators, and evolving
+collision debris can score; stationary blocks cannot.
+
+### Reproduce and read the tables
+
+```sh
+npx tsx scripts/siege-experiments.ts --births
+npx tsx scripts/siege-experiments.ts --births --write-tables
+npx vitest run tests/siegeBirths.test.ts
+```
+
+The write command replaces only the births markers below. Every legal
+candidate from the prior LWSS, glider, mixed-escort, whole-budget, and growth
+search families is retained. No pruning: all **81** hitbox {10,12,14} ×
+HP {32,48,64} × cap {4,8,12} × units/HP {4,8,16} combinations are replayed
+against the same full 640-generation Life trajectories. Each generation's
+raw enemy newborn counts are measured separately for all three boxes.
+Parameter changes never influence evolution. Replay outcomes stop on the
+first death and agree with actual simulator accounting in all 81 test sets.
+Search rates describe these finite placements, not probabilities against
+arbitrary armies. Tables labelled full 640 include diagnostic post-death
+observations; ordinary matches stop on death. “Any contact” includes a birth
+that leaves only a fractional remainder; the §9 damage rate requires at
+least one HP lost. Hitbox-specific legality changes denominators; notably the
+original hybrid template is illegal at hitbox 14, so that tournament has
+20 rather than 30 games. Matched gun ablations remove the gun without spending
+its freed budget and can include friendly-collision effects, not only firing.
+
+### Recommendation and unopposed results
+
+Recommend **48 HP / 12×12 / cap 8 / 8 units per HP**: 384 capped birth units
+kill a crystal, at most one HP can be lost per generation, and all four
+certified mounts finish within the requested 30–60 seconds. Both diagonal
+guns contact at **108**, kill at **367 (45.875 s)**; both horizontal guns
+contact at **162**, kill at **421 (52.625 s)**. This retains the existing
+hitbox geometry. At the same box/HP, 4 units/HP makes the diagonal gun kill
+at 239 (29.875 s); 16 units/HP takes 631 (78.875 s). Cap 4 leaves solo gun timing
+unchanged but drops pooled assault destruction from **25.5% to 21.5%**;
+cap 12 raises it only to 25.7% while allowing larger bursts. These pooled
+search percentages are not tournament balance rates. Of 81 sets, **66** pass
+the budget-ceiling gate and **36** put the diagonal gun in 30–60 s.
+
+Best searched four-LWSS train: contact 101, kill 156 (**19.5 s**), with
+290/3540 unopposed kills (8.2%). Eight-LWSS: contact 105, kill 155
+(**19.375 s**), 77/408 kills (18.9%). One glider tops out at 88 units
+(**11 HP**), seven gliders at 156 (**19 HP**); neither family kills.
+The legal 72-cell block army and an illegal block seeded directly in the
+crystal both score **zero**. Oscillator probes deliberately violate
+in-base deployment exclusion: blinker **2 births/gen**, kill 192 (**24 s**);
+toad **4/gen**, kill 96 (**12 s**); beacon alternates 0/2, mean **1/gen**,
+kill 384 (**48 s**). Their damage is small and bounded per generation, but
+continues indefinitely while the oscillation survives.
+
+### Release gate and the gun's role
+
+- **Gun damages and kills: YES**, including all four certified mounts.
+- **Aligned eater stops the gun: YES**, zero contact/units for 640 generations.
+- **72-budget combined assault contests defence: YES**. Fastest 72-cell
+  gun+four-LWSS recipe kills an eater base at 156 (**19.5 s**); a different
+  72-cell recipe kills the independently functioning lower gun+upper eater
+  at 149 (**18.625 s**). Defender core cost is 43; unused budget is allowed.
+  Both winning damages contain **0 static-resident units**. The upper-gun
+  defence search is separately labelled interference; it is not evidence
+  for a functioning gun/eater pair.
+- **Gun relevance exists: YES; fastest escorts do not need it.** The fastest
+  LWSS and glider/LWSS champions have identical results after gun removal.
+  Growth, block, and seven-glider champions instead draw with zero damage
+  without their gun. The measured gun-dependent growth breach is 217
+  (**27.125 s**) vs the functioning gun+eater. An additional exact-spend
+  **72 vs 72** check pads that attack with a distant block and the defence
+  with six rear blocks and an outward glider: contact 152, kill 217, **48 red HP
+  remaining**, 386 birth units. The same 36-cell escort without the gun draws
+  at 640 with zero damage. The padded defence alone contacts 108 and kills 367,
+  confirming that its gun functions. Full placements appear below; this is
+  a finite counterexample, not a claim that every 72-cell defence is beaten.
+
+### Methuselah and tournament check
+
+Growth is finite, but **not necessarily harmless**. The best one-R seed
+`rpentomino@52,52/o2` contacts 75, kills 132 (**16.5 s**), totals 612 capped
+birth units by 640, and produces its last crystal newborn at 176. The best
+paired seed has the same undefended burst; adding a second R does not improve
+that kill. Births stops its static tail, unlike capture's permanent 100% paint.
+One-R unopposed kills occur in **16/200 (8.0%)**, two-R in **13/184 (7.1%)**.
+The limit of two R per army is unchanged. Against the original five styles,
+with both sides tested, those strongest empty-base champions score **40%**
+and **60%** over 10 matches each; both beat the gun, while the original growth
+and hybrid counter them. No domination is demonstrated in these probes;
+cheap burst growth still needs held-out testing and visual review. These
+champions were selected on the training search, not a held-out pool.
+
+The comparable 30-game tournament freezes the previous five recipes and
+counts mirrored self matches twice. Draws count as half a win. Gun **41.7%**,
+rush **50.0%**, growth **41.7%**, defence **33.3%**, hybrid **83.3%**.
+Damage: **16/30 (53.3%)**, below §9's 80%; destruction: **8/30 (26.7%)**,
+below 60%; **3 styles** are within 40–60%, meeting that style-count target.
+There are **14/30 draws**, 8 red wins and 8 blue wins, **0.0 pp side bias**,
+and **0 mirror HP/end mismatches**. The mechanical release gate passes;
+the broader balance/readability gate remains **NO**. The strong hybrid and
+oscillator damage require more templates and playtests before claiming
+balance. Template spends remain unequal (36/45/10/18/68), as in HP/capture.
+
+### Old fastest HP breach
+
+Re-scoring the original 72-cell gun+BEST_ESCORT vs aligned eater gives contact
+**128**, **140 birth units = 17 HP lost + 4 remainder**, last birth **171**,
+**no kill**, and a timeout red win at 640 (**48 vs 31 HP**). The old HP
+observer killed at 268 because its settled 8 enemy cells kept scoring.
+Isolating those in-base residents under births gives **0 units**, no contact,
+and a draw. The collision's transient births still count, but settled blocks
+cannot finish the crystal by waiting.
+
+<!-- BEGIN GENERATED BIRTHS TABLES -->
+
+### Births unopposed certified gun mounts
+
+| Mount | Contact | Kill gen | Kill seconds @8 gen/s | HP lost at end | Units at end | Units at640 |
+| --- | --- | --- | --- | --- | --- | --- |
+| gosperglidergun@51,4/o7 | 108 | 367 | 45.875 | 48 | 384 | 785 |
+| gosperglidergun@51,56/o3 | 108 | 367 | 45.875 | 48 | 384 | 785 |
+| gosperglidergun@24,4/o0 | 162 | 421 | 52.625 | 48 | 384 | 703 |
+| gosperglidergun@24,83/o6 | 162 | 421 | 52.625 | 48 | 384 | 703 |
+
+### Births unopposed families (full legal search, outcomes stop on death)
+
+| Family | Cases | Any contact | Either crystal destroyed | Red wins | Blue wins | Draws | Median lethal gen | Fastest red kill | Best contact | Best capped units at end | Best HP lost | Best full recipe |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 4 LWSS | 3540 | 726/3540 (20.5%) | 290/3540 (8.2%) | 726 | 0 | 2814 | 167 | 156 | 101 | 385 | 48 | lwss@6,49/o2; lwss@13,43/o2; lwss@20,49/o2; lwss@27,43/o2 |
+| 8 LWSS | 408 | 149/408 (36.5%) | 77/408 (18.9%) | 149 | 0 | 259 | 160 | 155 | 105 | 386 | 48 | lwss@4,44/o2; lwss@11,44/o2; lwss@18,44/o2; lwss@25,44/o2; lwss@4,50/o2; lwss@11,50/o2; lwss@18,50/o2; lwss@25,50/o2 |
+| one glider | 236 | 26/236 (11.0%) | 0/236 (0.0%) | 20 | 0 | 216 | — | — | 112 | 88 | 11 | glider@52,12/o0 |
+| 7 gliders | 828 | 56/828 (6.8%) | 0/828 (0.0%) | 42 | 0 | 786 | — | — | 149 | 156 | 19 | glider@36,4/o7; glider@42,4/o7; glider@36,10/o7; glider@42,10/o7; glider@36,16/o7; glider@42,16/o7; glider@36,22/o7 |
+| one R-pentomino | 200 | 65/200 (32.5%) | 16/200 (8.0%) | 59 | 0 | 141 | 323.5 | 132 | 75 | 390 | 48 | rpentomino@52,52/o2 |
+| two R-pentomino | 184 | 34/184 (18.5%) | 13/184 (7.1%) | 33 | 0 | 151 | 572 | 132 | 75 | 390 | 48 | rpentomino@52,52/o2; rpentomino@44,60/o2 |
+| 18 stationary blocks (72 cells) | 1 | 0/1 (0.0%) | 0/1 (0.0%) | 0 | 0 | 1 | — | — | — | 0 | 0 | block@4,4/o0; block@11,4/o0; block@18,4/o0; block@25,4/o0; block@32,4/o0; block@39,4/o0; block@4,11/o0; block@11,11/o0; block@18,11/o0; block@25,11/o0; block@32,11/o0; block@39,11/o0; block@4,18/o0; block@11,18/o0; block@18,18/o0; block@25,18/o0; block@32,18/o0; block@39,18/o0 |
+
+### Births stationary and oscillator probes (illegal in-base seeds)
+
+| Fixture | Seed cells | Births gen1 | Births gen2 | Mean capped births/gen | Kill gen | Kill seconds | HP lost by640 | Units at640 | Units from surviving/static cells |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| block | 4 | 0 | 0 | 0 | — | — | 0 | 0 | 0 |
+| blinker | 3 | 2 | 2 | 2 | 192 | 24 | 48 | 1280 | 0 |
+| toad | 6 | 4 | 4 | 4 | 96 | 12 | 48 | 2560 | 0 |
+| beacon | 8 | 0 | 2 | 1 | 384 | 48 | 48 | 640 | 0 |
+
+### Births assault families (recommended parameters)
+
+| Family | Cases | Any contact | Either crystal destroyed | Red wins | Blue wins | Draws | Median lethal gen | Fastest red kill | Best full attack |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 4 LWSS + gun vs eater | 3269 | 804/3269 (24.6%) | 253/3269 (7.7%) | 759 | 12 | 2498 | 221 | 156 | gosperglidergun@51,4/o7; lwss@6,49/o2; lwss@13,43/o2; lwss@20,49/o2; lwss@27,43/o2 |
+| glider escort + gun vs eater | 501 | 193/501 (38.5%) | 54/501 (10.8%) | 180 | 6 | 315 | 175 | 175 | gosperglidergun@51,4/o7; lwss@4,43/o2; lwss@14,43/o2; lwss@24,43/o2; glider@54,35/o0; block@50,29/o0 |
+| growth escort + gun vs eater | 552 | 124/552 (22.5%) | 70/552 (12.7%) | 116 | 0 | 436 | 373.5 | 237 | gosperglidergun@51,4/o7; lwss@4,50/o4; lwss@18,50/o4; rpentomino@54,50/o0; rpentomino@48,42/o0; block@44,56/o0 |
+| blocks escort + gun vs eater | 828 | 198/828 (23.9%) | 24/828 (2.9%) | 179 | 11 | 638 | 434 | 356 | gosperglidergun@51,4/o7; lwss@12,34/o2; lwss@22,34/o2; block@50,26/o0; block@44,26/o0; block@38,26/o0; block@32,26/o0 |
+| 7 gliders + gun vs eater | 828 | 92/828 (11.1%) | 22/828 (2.7%) | 82 | 1 | 745 | 486 | 368 | gosperglidergun@51,4/o7; glider@28,58/o0; glider@34,58/o0; glider@28,62/o0; glider@34,62/o0; glider@28,66/o0; glider@34,66/o0; glider@28,70/o0 |
+| 4 LWSS + gun vs lower gun+eater | 3269 | 2631/3269 (80.5%) | 2156/3269 (66.0%) | 306 | 2294 | 669 | 367 | 149 | gosperglidergun@51,4/o7; lwss@12,56/o2; lwss@26,50/o2; lwss@40,56/o2; lwss@54,50/o2 |
+| growth escort + gun vs lower gun+eater | 552 | 492/552 (89.1%) | 373/552 (67.6%) | 50 | 428 | 74 | 368 | 217 | gosperglidergun@51,4/o7; lwss@4,46/o4; lwss@14,46/o4; rpentomino@54,54/o0; rpentomino@48,46/o0; block@44,60/o0 |
+| 8 LWSS vs upper gun+eater (interference) | 408 | 169/408 (41.4%) | 84/408 (20.6%) | 126 | 31 | 251 | 171 | 155 | lwss@4,44/o2; lwss@11,44/o2; lwss@18,44/o2; lwss@25,44/o2; lwss@4,50/o2; lwss@11,50/o2; lwss@18,50/o2; lwss@25,50/o2 |
+| 8 LWSS vs lower gun+eater | 408 | 320/408 (78.4%) | 260/408 (63.7%) | 76 | 239 | 93 | 367 | 155 | lwss@4,42/o4; lwss@11,42/o4; lwss@18,42/o4; lwss@25,42/o4; lwss@4,48/o4; lwss@11,48/o4; lwss@18,48/o4; lwss@25,48/o4 |
+| 4 LWSS vs block | 3540 | 850/3540 (24.0%) | 307/3540 (8.7%) | 827 | 0 | 2713 | 170 | 156 | lwss@6,49/o2; lwss@13,43/o2; lwss@20,49/o2; lwss@27,43/o2 |
+
+### Births matched gun ablation (same escorts, no budget refill)
+
+| Recipe | Attacker gun | Cost | Contact | Blue kill | End | Winner | Blue HP lost | Blue units | Red HP | Static-resident scored units |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| fastest vs eater | yes | 72 | 101 | 156 | 156 | red | 48 | 385 | 48 | 0 |
+| fastest vs eater | no | 36 | 101 | 156 | 156 | red | 48 | 385 | 48 | 0 |
+| fastest vs functioning gun+eater | yes | 72 | 47 | 149 | 149 | red | 48 | 387 | 48 | 0 |
+| fastest vs functioning gun+eater | no | 36 | 47 | 149 | 149 | red | 48 | 387 | 48 | 0 |
+| old mixed gun-preserving breach | yes | 68 | 294 | 354 | 354 | red | 48 | 388 | 48 | 0 |
+| old mixed gun-preserving breach | no | 32 | 294 | 354 | 354 | red | 48 | 388 | 48 | 0 |
+
+### Births tournament templates (frozen HP/capture recipes; unequal spend)
+
+| Style | Cost | Recipe |
+| --- | --- | --- |
+| gun | 36 | gosperglidergun@51,4/o7 |
+| rush | 45 | lwss@4,42/o4; lwss@14,42/o4; lwss@24,42/o4; lwss@4,49/o4; lwss@14,49/o4 |
+| growth | 10 | rpentomino@54,25/o0; rpentomino@54,64/o0 |
+| defence | 18 | eater1@52,35/o4; eater1@52,57/o6; block@51,46/o0 |
+| hybrid | 68 | gosperglidergun@51,4/o7; lwss@8,49/o2; lwss@18,49/o2; rpentomino@54,57/o0; rpentomino@48,49/o0; block@44,63/o0 |
+
+### Births tournament (30 games, including twice-counted self matches)
+
+| Red | Blue | Winner | Red HP | Blue HP | End gen |
+| --- | --- | --- | --- | --- | --- |
+| gun | gun | draw | 48 | 48 | 640 |
+| gun | gun | draw | 48 | 48 | 640 |
+| gun | rush | blue | 0 | 43 | 167 |
+| rush | gun | red | 43 | 0 | 167 |
+| gun | growth | red | 48 | 37 | 640 |
+| growth | gun | blue | 37 | 48 | 640 |
+| gun | defence | draw | 48 | 48 | 640 |
+| defence | gun | draw | 48 | 48 | 640 |
+| gun | hybrid | blue | 0 | 48 | 456 |
+| hybrid | gun | red | 48 | 0 | 456 |
+| rush | rush | draw | 48 | 48 | 640 |
+| rush | rush | draw | 48 | 48 | 640 |
+| rush | growth | blue | 0 | 16 | 366 |
+| growth | rush | red | 16 | 0 | 366 |
+| rush | defence | red | 48 | 2 | 640 |
+| defence | rush | blue | 2 | 48 | 640 |
+| rush | hybrid | blue | 0 | 48 | 397 |
+| hybrid | rush | red | 48 | 0 | 397 |
+| growth | growth | draw | 48 | 48 | 640 |
+| growth | growth | draw | 48 | 48 | 640 |
+| growth | defence | draw | 48 | 48 | 640 |
+| defence | growth | draw | 48 | 48 | 640 |
+| growth | hybrid | blue | 37 | 48 | 640 |
+| hybrid | growth | red | 48 | 37 | 640 |
+| defence | defence | draw | 48 | 48 | 640 |
+| defence | defence | draw | 48 | 48 | 640 |
+| defence | hybrid | blue | 43 | 48 | 640 |
+| hybrid | defence | red | 48 | 43 | 640 |
+| hybrid | hybrid | draw | 48 | 48 | 640 |
+| hybrid | hybrid | draw | 48 | 48 | 640 |
+
+### Births tournament style rates
+
+| Style | Wins | Draws | Losses | Win rate (draw=.5) |
+| --- | --- | --- | --- | --- |
+| gun | 2 | 6 | 4 | 41.7% |
+| rush | 4 | 4 | 4 | 50.0% |
+| growth | 2 | 6 | 4 | 41.7% |
+| defence | 0 | 8 | 4 | 33.3% |
+| hybrid | 8 | 4 | 0 | 83.3% |
+
+### Births tournament targets and side bias
+
+| Games | Any contact | Damage ≥1 HP (target ≥80%) | Destruction (target ≥60%) | Styles at40–60% (target ≥3) | Red wins | Blue wins | Draws | Red−blue pp | Mirror HP/end mismatches |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 30 | 16/30 (53.3%) | 16/30 (53.3%) | 8/30 (26.7%) | 3 | 8 | 8 | 14 | 0.0 | 0 |
+
+### Births complete 81-set release gate / gun tuning
+
+| Hitbox | HP | Cap | Units/HP | Solo gun kill | Seconds @8 | Eater stops gun | Combined winning kill vs eater | Combined winning kill vs functioning gun+eater | Release gate |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 10 | 32 | 4 | 4 | 243 | 30.375 | YES | 117 | 117 | YES |
+| 10 | 32 | 4 | 8 | 386 | 48.25 | YES | 170 | 161 | YES |
+| 10 | 32 | 4 | 16 | — | — | YES | 295 | 231 | NO |
+| 10 | 32 | 8 | 4 | 243 | 30.375 | YES | 111 | 111 | YES |
+| 10 | 32 | 8 | 8 | 386 | 48.25 | YES | 144 | 139 | YES |
+| 10 | 32 | 8 | 16 | — | — | YES | 235 | 196 | NO |
+| 10 | 32 | 12 | 4 | 243 | 30.375 | YES | 111 | 111 | YES |
+| 10 | 32 | 12 | 8 | 386 | 48.25 | YES | 142 | 137 | YES |
+| 10 | 32 | 12 | 16 | — | — | YES | 228 | 193 | NO |
+| 10 | 48 | 4 | 4 | 308 | 38.5 | YES | 151 | 140 | YES |
+| 10 | 48 | 4 | 8 | 515 | 64.375 | YES | 247 | 196 | YES |
+| 10 | 48 | 4 | 16 | — | — | YES | 379 | 321 | NO |
+| 10 | 48 | 8 | 4 | 308 | 38.5 | YES | 123 | 123 | YES |
+| 10 | 48 | 8 | 8 | 515 | 64.375 | YES | 162 | 162 | YES |
+| 10 | 48 | 8 | 16 | — | — | YES | 293 | 239 | NO |
+| 10 | 48 | 12 | 4 | 308 | 38.5 | YES | 123 | 123 | YES |
+| 10 | 48 | 12 | 8 | 515 | 64.375 | YES | 158 | 158 | YES |
+| 10 | 48 | 12 | 16 | — | — | YES | 285 | 233 | NO |
+| 10 | 64 | 4 | 4 | 386 | 48.25 | YES | 170 | 161 | YES |
+| 10 | 64 | 4 | 8 | — | — | YES | 295 | 231 | NO |
+| 10 | 64 | 4 | 16 | — | — | YES | 444 | 392 | NO |
+| 10 | 64 | 8 | 4 | 386 | 48.25 | YES | 144 | 139 | YES |
+| 10 | 64 | 8 | 8 | — | — | YES | 235 | 196 | NO |
+| 10 | 64 | 8 | 16 | — | — | YES | 337 | 285 | NO |
+| 10 | 64 | 12 | 4 | 386 | 48.25 | YES | 142 | 137 | YES |
+| 10 | 64 | 12 | 8 | — | — | YES | 228 | 193 | NO |
+| 10 | 64 | 12 | 16 | — | — | YES | 337 | 261 | NO |
+| 12 | 32 | 4 | 4 | 192 | 24 | YES | 111 | 91 | YES |
+| 12 | 32 | 4 | 8 | 279 | 34.875 | YES | 163 | 128 | YES |
+| 12 | 32 | 4 | 16 | 455 | 56.875 | YES | 311 | 201 | YES |
+| 12 | 32 | 8 | 4 | 192 | 24 | YES | 75 | 75 | YES |
+| 12 | 32 | 8 | 8 | 279 | 34.875 | YES | 130 | 126 | YES |
+| 12 | 32 | 8 | 16 | 455 | 56.875 | YES | 179 | 169 | YES |
+| 12 | 32 | 12 | 4 | 192 | 24 | YES | 75 | 75 | YES |
+| 12 | 32 | 12 | 8 | 279 | 34.875 | YES | 130 | 126 | YES |
+| 12 | 32 | 12 | 16 | 455 | 56.875 | YES | 168 | 162 | YES |
+| 12 | 48 | 4 | 4 | 239 | 29.875 | YES | 127 | 110 | YES |
+| 12 | 48 | 4 | 8 | 367 | 45.875 | YES | 195 | 164 | YES |
+| 12 | 48 | 4 | 16 | 631 | 78.875 | YES | 375 | 274 | YES |
+| 12 | 48 | 8 | 4 | 239 | 29.875 | YES | 117 | 108 | YES |
+| 12 | 48 | 8 | 8 | 367 | 45.875 | YES | 156 | 149 | YES |
+| 12 | 48 | 8 | 16 | 631 | 78.875 | YES | 293 | 212 | YES |
+| 12 | 48 | 12 | 4 | 239 | 29.875 | YES | 117 | 107 | YES |
+| 12 | 48 | 12 | 8 | 367 | 45.875 | YES | 150 | 140 | YES |
+| 12 | 48 | 12 | 16 | 631 | 78.875 | YES | 241 | 196 | YES |
+| 12 | 64 | 4 | 4 | 279 | 34.875 | YES | 163 | 128 | YES |
+| 12 | 64 | 4 | 8 | 455 | 56.875 | YES | 311 | 201 | YES |
+| 12 | 64 | 4 | 16 | — | — | YES | 439 | 347 | NO |
+| 12 | 64 | 8 | 4 | 279 | 34.875 | YES | 130 | 126 | YES |
+| 12 | 64 | 8 | 8 | 455 | 56.875 | YES | 179 | 169 | YES |
+| 12 | 64 | 8 | 16 | — | — | YES | 325 | 244 | NO |
+| 12 | 64 | 12 | 4 | 279 | 34.875 | YES | 130 | 126 | YES |
+| 12 | 64 | 12 | 8 | 455 | 56.875 | YES | 168 | 162 | YES |
+| 12 | 64 | 12 | 16 | — | — | YES | 310 | 228 | NO |
+| 14 | 32 | 4 | 4 | 171 | 21.375 | YES | 96 | 96 | YES |
+| 14 | 32 | 4 | 8 | 235 | 29.375 | YES | 138 | 138 | YES |
+| 14 | 32 | 4 | 16 | 363 | 45.375 | YES | 224 | 224 | YES |
+| 14 | 32 | 8 | 4 | 171 | 21.375 | YES | 72 | 72 | YES |
+| 14 | 32 | 8 | 8 | 235 | 29.375 | YES | 123 | 136 | YES |
+| 14 | 32 | 8 | 16 | 363 | 45.375 | YES | 170 | 170 | YES |
+| 14 | 32 | 12 | 4 | 171 | 21.375 | YES | 72 | 72 | YES |
+| 14 | 32 | 12 | 8 | 235 | 29.375 | YES | 123 | 133 | YES |
+| 14 | 32 | 12 | 16 | 363 | 45.375 | YES | 159 | 159 | YES |
+| 14 | 48 | 4 | 4 | 203 | 25.375 | YES | 117 | 117 | YES |
+| 14 | 48 | 4 | 8 | 299 | 37.375 | YES | 181 | 181 | YES |
+| 14 | 48 | 4 | 16 | 491 | 61.375 | YES | 309 | 299 | YES |
+| 14 | 48 | 8 | 4 | 203 | 25.375 | YES | 111 | 116 | YES |
+| 14 | 48 | 8 | 8 | 299 | 37.375 | YES | 153 | 153 | YES |
+| 14 | 48 | 8 | 16 | 491 | 61.375 | YES | 247 | 217 | YES |
+| 14 | 48 | 12 | 4 | 203 | 25.375 | YES | 111 | 116 | YES |
+| 14 | 48 | 12 | 8 | 299 | 37.375 | YES | 145 | 145 | YES |
+| 14 | 48 | 12 | 16 | 491 | 61.375 | YES | 186 | 185 | YES |
+| 14 | 64 | 4 | 4 | 235 | 29.375 | YES | 138 | 138 | YES |
+| 14 | 64 | 4 | 8 | 363 | 45.375 | YES | 224 | 224 | YES |
+| 14 | 64 | 4 | 16 | 619 | 77.375 | YES | 394 | 364 | YES |
+| 14 | 64 | 8 | 4 | 235 | 29.375 | YES | 123 | 136 | YES |
+| 14 | 64 | 8 | 8 | 363 | 45.375 | YES | 170 | 170 | YES |
+| 14 | 64 | 8 | 16 | 619 | 77.375 | YES | 321 | 250 | YES |
+| 14 | 64 | 12 | 4 | 235 | 29.375 | YES | 123 | 133 | YES |
+| 14 | 64 | 12 | 8 | 363 | 45.375 | YES | 159 | 159 | YES |
+| 14 | 64 | 12 | 16 | 619 | 77.375 | YES | 289 | 224 | YES |
+
+### Births complete 81-set assault and tournament sweep
+
+| Hitbox | HP | Cap | Units/HP | Assault Cases | Assault Any contact | Assault Either crystal destroyed | Assault Red wins | Assault Blue wins | Assault Draws | Assault Median lethal gen | Assault Fastest red kill | Tournament Cases | Tournament Any contact | Tournament Either crystal destroyed | Tournament Red wins | Tournament Blue wins | Tournament Draws | Tournament Median lethal gen | Tournament Fastest red kill |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 10 | 32 | 4 | 4 | 15560 | 6246/15560 (40.1%) | 4693/15560 (30.2%) | 2953 | 3185 | 9422 | 243 | 117 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 161 | 145 |
+| 10 | 32 | 4 | 8 | 15560 | 6246/15560 (40.1%) | 3511/15560 (22.6%) | 2769 | 3250 | 9541 | 386 | 161 | 30 | 16/30 (53.3%) | 8/30 (26.7%) | 8 | 8 | 14 | 416 | 380 |
+| 10 | 32 | 4 | 16 | 15560 | 6246/15560 (40.1%) | 866/15560 (5.6%) | 2671 | 3244 | 9645 | 466 | 231 | 30 | 16/30 (53.3%) | 2/30 (6.7%) | 8 | 8 | 14 | 453 | 453 |
+| 10 | 32 | 8 | 4 | 15560 | 6246/15560 (40.1%) | 4732/15560 (30.4%) | 2958 | 3181 | 9421 | 243 | 111 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 148 | 140 |
+| 10 | 32 | 8 | 8 | 15560 | 6246/15560 (40.1%) | 3887/15560 (25.0%) | 2839 | 3181 | 9540 | 386 | 139 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 366 | 161 |
+| 10 | 32 | 8 | 16 | 15560 | 6246/15560 (40.1%) | 1177/15560 (7.6%) | 2700 | 3216 | 9644 | 451 | 175 | 30 | 16/30 (53.3%) | 2/30 (6.7%) | 8 | 8 | 14 | 401 | 401 |
+| 10 | 32 | 12 | 4 | 15560 | 6246/15560 (40.1%) | 4734/15560 (30.4%) | 2958 | 3181 | 9421 | 243 | 111 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 146 | 140 |
+| 10 | 32 | 12 | 8 | 15560 | 6246/15560 (40.1%) | 3893/15560 (25.0%) | 2838 | 3181 | 9541 | 386 | 134 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 365 | 161 |
+| 10 | 32 | 12 | 16 | 15560 | 6246/15560 (40.1%) | 1254/15560 (8.1%) | 2705 | 3209 | 9646 | 445.5 | 155 | 30 | 16/30 (53.3%) | 2/30 (6.7%) | 8 | 8 | 14 | 393 | 393 |
+| 10 | 48 | 4 | 4 | 15560 | 6246/15560 (40.1%) | 4016/15560 (25.8%) | 2915 | 3223 | 9422 | 308 | 140 | 30 | 16/30 (53.3%) | 8/30 (26.7%) | 8 | 8 | 14 | 351 | 161 |
+| 10 | 48 | 4 | 8 | 15560 | 6246/15560 (40.1%) | 2827/15560 (18.2%) | 2751 | 3269 | 9540 | 515 | 196 | 30 | 16/30 (53.3%) | 6/30 (20.0%) | 8 | 8 | 14 | 545 | 412 |
+| 10 | 48 | 4 | 16 | 15560 | 6246/15560 (40.1%) | 442/15560 (2.8%) | 2672 | 3243 | 9645 | 517.5 | 303 | 30 | 16/30 (53.3%) | 2/30 (6.7%) | 8 | 8 | 14 | 553 | 553 |
+| 10 | 48 | 8 | 4 | 15560 | 6246/15560 (40.1%) | 4307/15560 (27.7%) | 2961 | 3178 | 9421 | 308 | 123 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 338 | 153 |
+| 10 | 48 | 8 | 8 | 15560 | 6246/15560 (40.1%) | 3278/15560 (21.1%) | 2799 | 3220 | 9541 | 515 | 158 | 30 | 16/30 (53.3%) | 8/30 (26.7%) | 8 | 8 | 14 | 513.5 | 384 |
+| 10 | 48 | 8 | 16 | 15560 | 6246/15560 (40.1%) | 683/15560 (4.4%) | 2701 | 3215 | 9644 | 471 | 217 | 30 | 16/30 (53.3%) | 2/30 (6.7%) | 8 | 8 | 14 | 465 | 465 |
+| 10 | 48 | 12 | 4 | 15560 | 6246/15560 (40.1%) | 4322/15560 (27.8%) | 2960 | 3179 | 9421 | 308 | 123 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 338 | 153 |
+| 10 | 48 | 12 | 8 | 15560 | 6246/15560 (40.1%) | 3310/15560 (21.3%) | 2804 | 3215 | 9541 | 515 | 144 | 30 | 16/30 (53.3%) | 8/30 (26.7%) | 8 | 8 | 14 | 503 | 380 |
+| 10 | 48 | 12 | 16 | 15560 | 6246/15560 (40.1%) | 726/15560 (4.7%) | 2707 | 3207 | 9646 | 456.5 | 184 | 30 | 16/30 (53.3%) | 2/30 (6.7%) | 8 | 8 | 14 | 431 | 431 |
+| 10 | 64 | 4 | 4 | 15560 | 6246/15560 (40.1%) | 3511/15560 (22.6%) | 2871 | 3266 | 9423 | 386 | 161 | 30 | 16/30 (53.3%) | 8/30 (26.7%) | 8 | 8 | 14 | 416 | 380 |
+| 10 | 64 | 4 | 8 | 15560 | 6246/15560 (40.1%) | 866/15560 (5.6%) | 2750 | 3269 | 9541 | 466 | 231 | 30 | 16/30 (53.3%) | 2/30 (6.7%) | 8 | 8 | 14 | 453 | 453 |
+| 10 | 64 | 4 | 16 | 15560 | 6246/15560 (40.1%) | 219/15560 (1.4%) | 2672 | 3243 | 9645 | 574 | 367 | 30 | 16/30 (53.3%) | 0/30 (0.0%) | 8 | 8 | 14 | — | — |
+| 10 | 64 | 8 | 4 | 15560 | 6246/15560 (40.1%) | 3887/15560 (25.0%) | 2942 | 3197 | 9421 | 386 | 139 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 366 | 161 |
+| 10 | 64 | 8 | 8 | 15560 | 6246/15560 (40.1%) | 1177/15560 (7.6%) | 2779 | 3240 | 9541 | 451 | 175 | 30 | 16/30 (53.3%) | 2/30 (6.7%) | 8 | 8 | 14 | 401 | 401 |
+| 10 | 64 | 8 | 16 | 15560 | 6246/15560 (40.1%) | 441/15560 (2.8%) | 2701 | 3215 | 9644 | 507 | 268 | 30 | 16/30 (53.3%) | 2/30 (6.7%) | 8 | 8 | 14 | 565 | 565 |
+| 10 | 64 | 12 | 4 | 15560 | 6246/15560 (40.1%) | 3893/15560 (25.0%) | 2941 | 3197 | 9422 | 386 | 134 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 365 | 161 |
+| 10 | 64 | 12 | 8 | 15560 | 6246/15560 (40.1%) | 1254/15560 (8.1%) | 2786 | 3232 | 9542 | 445.5 | 155 | 30 | 16/30 (53.3%) | 2/30 (6.7%) | 8 | 8 | 14 | 393 | 393 |
+| 10 | 64 | 12 | 16 | 15560 | 6246/15560 (40.1%) | 507/15560 (3.3%) | 2708 | 3206 | 9646 | 500 | 224 | 30 | 16/30 (53.3%) | 2/30 (6.7%) | 8 | 8 | 14 | 532 | 532 |
+| 12 | 32 | 4 | 4 | 14155 | 5873/14155 (41.5%) | 4588/14155 (32.4%) | 2773 | 3014 | 8368 | 192 | 91 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 159 | 141 |
+| 12 | 32 | 4 | 8 | 14155 | 5873/14155 (41.5%) | 3746/14155 (26.5%) | 2675 | 3048 | 8432 | 279 | 128 | 30 | 16/30 (53.3%) | 8/30 (26.7%) | 8 | 8 | 14 | 333 | 173 |
+| 12 | 32 | 4 | 16 | 14155 | 5873/14155 (41.5%) | 2707/14155 (19.1%) | 2574 | 3057 | 8524 | 455 | 201 | 30 | 16/30 (53.3%) | 8/30 (26.7%) | 8 | 8 | 14 | 485 | 421 |
+| 12 | 32 | 8 | 4 | 14155 | 5873/14155 (41.5%) | 4694/14155 (33.2%) | 2828 | 2959 | 8368 | 192 | 75 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 145 | 132 |
+| 12 | 32 | 8 | 8 | 14155 | 5873/14155 (41.5%) | 4120/14155 (29.1%) | 2752 | 2972 | 8431 | 279 | 126 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 161 | 151 |
+| 12 | 32 | 8 | 16 | 14155 | 5873/14155 (41.5%) | 3056/14155 (21.6%) | 2588 | 3043 | 8524 | 455 | 169 | 30 | 16/30 (53.3%) | 8/30 (26.7%) | 8 | 8 | 14 | 482 | 382 |
+| 12 | 32 | 12 | 4 | 14155 | 5873/14155 (41.5%) | 4698/14155 (33.2%) | 2828 | 2959 | 8368 | 192 | 75 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 142 | 132 |
+| 12 | 32 | 12 | 8 | 14155 | 5873/14155 (41.5%) | 4130/14155 (29.2%) | 2761 | 2963 | 8431 | 279 | 126 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 154 | 150 |
+| 12 | 32 | 12 | 16 | 14155 | 5873/14155 (41.5%) | 3238/14155 (22.9%) | 2634 | 3003 | 8518 | 455 | 152 | 30 | 16/30 (53.3%) | 8/30 (26.7%) | 8 | 8 | 14 | 425.5 | 175 |
+| 12 | 48 | 4 | 4 | 14155 | 5873/14155 (41.5%) | 4145/14155 (29.3%) | 2778 | 3007 | 8370 | 239 | 110 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 269 | 157 |
+| 12 | 48 | 4 | 8 | 14155 | 5873/14155 (41.5%) | 3045/14155 (21.5%) | 2641 | 3081 | 8433 | 367 | 164 | 30 | 16/30 (53.3%) | 8/30 (26.7%) | 8 | 8 | 14 | 397 | 389 |
+| 12 | 48 | 4 | 16 | 14155 | 5873/14155 (41.5%) | 1903/14155 (13.4%) | 2575 | 3056 | 8524 | 631 | 274 | 30 | 16/30 (53.3%) | 2/30 (6.7%) | 8 | 8 | 14 | 493 | 493 |
+| 12 | 48 | 8 | 4 | 14155 | 5873/14155 (41.5%) | 4352/14155 (30.7%) | 2802 | 2982 | 8371 | 239 | 108 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 153 | 142 |
+| 12 | 48 | 8 | 8 | 14155 | 5873/14155 (41.5%) | 3603/14155 (25.5%) | 2701 | 3022 | 8432 | 367 | 149 | 30 | 16/30 (53.3%) | 8/30 (26.7%) | 8 | 8 | 14 | 381.5 | 167 |
+| 12 | 48 | 8 | 16 | 14155 | 5873/14155 (41.5%) | 2151/14155 (15.2%) | 2599 | 3031 | 8525 | 631 | 207 | 30 | 16/30 (53.3%) | 2/30 (6.7%) | 8 | 8 | 14 | 417 | 417 |
+| 12 | 48 | 12 | 4 | 14155 | 5873/14155 (41.5%) | 4358/14155 (30.8%) | 2800 | 2984 | 8371 | 239 | 107 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 148 | 141 |
+| 12 | 48 | 12 | 8 | 14155 | 5873/14155 (41.5%) | 3633/14155 (25.7%) | 2742 | 2982 | 8431 | 367 | 140 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 363 | 162 |
+| 12 | 48 | 12 | 16 | 14155 | 5873/14155 (41.5%) | 2227/14155 (15.7%) | 2606 | 3029 | 8520 | 631 | 174 | 30 | 16/30 (53.3%) | 4/30 (13.3%) | 8 | 8 | 14 | 496.5 | 398 |
+| 12 | 64 | 4 | 4 | 14155 | 5873/14155 (41.5%) | 3746/14155 (26.5%) | 2718 | 3068 | 8369 | 279 | 128 | 30 | 16/30 (53.3%) | 8/30 (26.7%) | 8 | 8 | 14 | 333 | 173 |
+| 12 | 64 | 4 | 8 | 14155 | 5873/14155 (41.5%) | 2707/14155 (19.1%) | 2649 | 3073 | 8433 | 455 | 201 | 30 | 16/30 (53.3%) | 8/30 (26.7%) | 8 | 8 | 14 | 485 | 421 |
+| 12 | 64 | 4 | 16 | 14155 | 5873/14155 (41.5%) | 345/14155 (2.4%) | 2576 | 3055 | 8524 | 533 | 347 | 30 | 16/30 (53.3%) | 2/30 (6.7%) | 8 | 8 | 14 | 565 | 565 |
+| 12 | 64 | 8 | 4 | 14155 | 5873/14155 (41.5%) | 4120/14155 (29.1%) | 2794 | 2991 | 8370 | 279 | 126 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 161 | 151 |
+| 12 | 64 | 8 | 8 | 14155 | 5873/14155 (41.5%) | 3056/14155 (21.6%) | 2664 | 3058 | 8433 | 455 | 169 | 30 | 16/30 (53.3%) | 8/30 (26.7%) | 8 | 8 | 14 | 482 | 382 |
+| 12 | 64 | 8 | 16 | 14155 | 5873/14155 (41.5%) | 606/14155 (4.3%) | 2599 | 3031 | 8525 | 480 | 244 | 30 | 16/30 (53.3%) | 2/30 (6.7%) | 8 | 8 | 14 | 481 | 481 |
+| 12 | 64 | 12 | 4 | 14155 | 5873/14155 (41.5%) | 4130/14155 (29.2%) | 2803 | 2982 | 8370 | 279 | 126 | 30 | 16/30 (53.3%) | 10/30 (33.3%) | 8 | 8 | 14 | 154 | 150 |
+| 12 | 64 | 12 | 8 | 14155 | 5873/14155 (41.5%) | 3238/14155 (22.9%) | 2707 | 3017 | 8431 | 455 | 152 | 30 | 16/30 (53.3%) | 8/30 (26.7%) | 8 | 8 | 14 | 425.5 | 175 |
+| 12 | 64 | 12 | 16 | 14155 | 5873/14155 (41.5%) | 671/14155 (4.7%) | 2607 | 3028 | 8520 | 458 | 205 | 30 | 16/30 (53.3%) | 2/30 (6.7%) | 8 | 8 | 14 | 435 | 435 |
+| 14 | 32 | 4 | 4 | 11574 | 4679/11574 (40.4%) | 3665/11574 (31.7%) | 2164 | 2435 | 6975 | 171 | 96 | 20 | 8/20 (40.0%) | 6/20 (30.0%) | 4 | 4 | 12 | 139 | 139 |
+| 14 | 32 | 4 | 8 | 11574 | 4679/11574 (40.4%) | 3127/11574 (27.0%) | 2081 | 2460 | 7033 | 235 | 138 | 20 | 8/20 (40.0%) | 4/20 (20.0%) | 4 | 4 | 12 | 250 | 171 |
+| 14 | 32 | 4 | 16 | 11574 | 4679/11574 (40.4%) | 2412/11574 (20.8%) | 2027 | 2467 | 7080 | 363 | 224 | 20 | 8/20 (40.0%) | 4/20 (20.0%) | 4 | 4 | 12 | 393 | 393 |
+| 14 | 32 | 8 | 4 | 11574 | 4679/11574 (40.4%) | 3750/11574 (32.4%) | 2188 | 2412 | 6974 | 171 | 72 | 20 | 8/20 (40.0%) | 6/20 (30.0%) | 4 | 4 | 12 | 130 | 130 |
+| 14 | 32 | 8 | 8 | 11574 | 4679/11574 (40.4%) | 3359/11574 (29.0%) | 2132 | 2410 | 7032 | 235 | 123 | 20 | 8/20 (40.0%) | 6/20 (30.0%) | 4 | 4 | 12 | 149 | 148 |
+| 14 | 32 | 8 | 16 | 11574 | 4679/11574 (40.4%) | 2678/11574 (23.1%) | 2040 | 2458 | 7076 | 363 | 169 | 20 | 8/20 (40.0%) | 4/20 (20.0%) | 4 | 4 | 12 | 378 | 363 |
+| 14 | 32 | 12 | 4 | 11574 | 4679/11574 (40.4%) | 3751/11574 (32.4%) | 2188 | 2412 | 6974 | 171 | 72 | 20 | 8/20 (40.0%) | 6/20 (30.0%) | 4 | 4 | 12 | 130 | 130 |
+| 14 | 32 | 12 | 8 | 11574 | 4679/11574 (40.4%) | 3377/11574 (29.2%) | 2133 | 2410 | 7031 | 235 | 123 | 20 | 8/20 (40.0%) | 6/20 (30.0%) | 4 | 4 | 12 | 147 | 146 |
+| 14 | 32 | 12 | 16 | 11574 | 4679/11574 (40.4%) | 2831/11574 (24.5%) | 2075 | 2424 | 7075 | 363 | 150 | 20 | 8/20 (40.0%) | 6/20 (30.0%) | 4 | 4 | 12 | 174 | 169 |
+| 14 | 48 | 4 | 4 | 11574 | 4679/11574 (40.4%) | 3463/11574 (29.9%) | 2155 | 2443 | 6976 | 203 | 117 | 20 | 8/20 (40.0%) | 6/20 (30.0%) | 4 | 4 | 12 | 155 | 155 |
+| 14 | 48 | 4 | 8 | 11574 | 4679/11574 (40.4%) | 2594/11574 (22.4%) | 2051 | 2488 | 7035 | 299 | 181 | 20 | 8/20 (40.0%) | 4/20 (20.0%) | 4 | 4 | 12 | 345 | 329 |
+| 14 | 48 | 4 | 16 | 11574 | 4679/11574 (40.4%) | 2073/11574 (17.9%) | 2035 | 2460 | 7079 | 491 | 295 | 20 | 8/20 (40.0%) | 4/20 (20.0%) | 4 | 4 | 12 | 489.5 | 458 |
+| 14 | 48 | 8 | 4 | 11574 | 4679/11574 (40.4%) | 3586/11574 (31.0%) | 2165 | 2433 | 6976 | 203 | 111 | 20 | 8/20 (40.0%) | 6/20 (30.0%) | 4 | 4 | 12 | 138 | 138 |
+| 14 | 48 | 8 | 8 | 11574 | 4679/11574 (40.4%) | 3026/11574 (26.1%) | 2115 | 2426 | 7033 | 299 | 153 | 20 | 8/20 (40.0%) | 6/20 (30.0%) | 4 | 4 | 12 | 175 | 164 |
+| 14 | 48 | 8 | 16 | 11574 | 4679/11574 (40.4%) | 2253/11574 (19.5%) | 2045 | 2453 | 7076 | 491 | 202 | 20 | 8/20 (40.0%) | 4/20 (20.0%) | 4 | 4 | 12 | 458.5 | 396 |
+| 14 | 48 | 12 | 4 | 11574 | 4679/11574 (40.4%) | 3597/11574 (31.1%) | 2167 | 2433 | 6974 | 203 | 111 | 20 | 8/20 (40.0%) | 6/20 (30.0%) | 4 | 4 | 12 | 137 | 137 |
+| 14 | 48 | 12 | 8 | 11574 | 4679/11574 (40.4%) | 3047/11574 (26.3%) | 2118 | 2425 | 7031 | 299 | 139 | 20 | 8/20 (40.0%) | 6/20 (30.0%) | 4 | 4 | 12 | 162 | 157 |
+| 14 | 48 | 12 | 16 | 11574 | 4679/11574 (40.4%) | 2408/11574 (20.8%) | 2054 | 2445 | 7075 | 491 | 172 | 20 | 8/20 (40.0%) | 4/20 (20.0%) | 4 | 4 | 12 | 451.5 | 382 |
+| 14 | 64 | 4 | 4 | 11574 | 4679/11574 (40.4%) | 3127/11574 (27.0%) | 2126 | 2472 | 6976 | 235 | 138 | 20 | 8/20 (40.0%) | 4/20 (20.0%) | 4 | 4 | 12 | 250 | 171 |
+| 14 | 64 | 4 | 8 | 11574 | 4679/11574 (40.4%) | 2412/11574 (20.8%) | 2060 | 2478 | 7036 | 363 | 224 | 20 | 8/20 (40.0%) | 4/20 (20.0%) | 4 | 4 | 12 | 393 | 393 |
+| 14 | 64 | 4 | 16 | 11574 | 4679/11574 (40.4%) | 1603/11574 (13.9%) | 2036 | 2459 | 7079 | 619 | 359 | 20 | 8/20 (40.0%) | 2/20 (10.0%) | 4 | 4 | 12 | 522 | 522 |
+| 14 | 64 | 8 | 4 | 11574 | 4679/11574 (40.4%) | 3359/11574 (29.0%) | 2177 | 2422 | 6975 | 235 | 123 | 20 | 8/20 (40.0%) | 6/20 (30.0%) | 4 | 4 | 12 | 149 | 148 |
+| 14 | 64 | 8 | 8 | 11574 | 4679/11574 (40.4%) | 2678/11574 (23.1%) | 2073 | 2468 | 7033 | 363 | 169 | 20 | 8/20 (40.0%) | 4/20 (20.0%) | 4 | 4 | 12 | 378 | 363 |
+| 14 | 64 | 8 | 16 | 11574 | 4679/11574 (40.4%) | 1798/11574 (15.5%) | 2048 | 2449 | 7077 | 619 | 235 | 20 | 8/20 (40.0%) | 2/20 (10.0%) | 4 | 4 | 12 | 433 | 433 |
+| 14 | 64 | 12 | 4 | 11574 | 4679/11574 (40.4%) | 3377/11574 (29.2%) | 2178 | 2422 | 6974 | 235 | 123 | 20 | 8/20 (40.0%) | 6/20 (30.0%) | 4 | 4 | 12 | 147 | 146 |
+| 14 | 64 | 12 | 8 | 11574 | 4679/11574 (40.4%) | 2831/11574 (24.5%) | 2109 | 2434 | 7031 | 363 | 150 | 20 | 8/20 (40.0%) | 6/20 (30.0%) | 4 | 4 | 12 | 174 | 169 |
+| 14 | 64 | 12 | 16 | 11574 | 4679/11574 (40.4%) | 1871/11574 (16.2%) | 2061 | 2438 | 7075 | 619 | 194 | 20 | 8/20 (40.0%) | 2/20 (10.0%) | 4 | 4 | 12 | 404 | 404 |
+
+### Old fastest HP breach re-scored under births
+
+| Fixture | Contact | Kill | HP lost | Units at640 | Last newborn gen | Winner | Static scored units |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| old 72-cell gun+4LWSS vs eater (HP kill268) | 128 | — | 17 | 140 | 171 | red | 0 |
+| only its settled in-base residents (illegal probe) | — | — | 0 | 0 | — | draw | 0 |
+
+### Births strongest growth tails (full640; no static score)
+
+| Seed family | Cost | Contact | Kill | Units at640 | Last birth | Mean capped births/gen577–640 | Static scored units | Recipe |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| one R-pentomino | 5 | 75 | 132 | 612 | 176 | 0 | 0 | rpentomino@52,52/o2 |
+| two R-pentomino | 10 | 75 | 132 | 612 | 176 | 0 | 0 | rpentomino@52,52/o2; rpentomino@44,60/o2 |
+
+### Births optimized methuselah stress matches (both sides)
+
+| Growth seed | Opponent | Growth side | Winner | Growth HP | Opponent HP | End |
+| --- | --- | --- | --- | --- | --- | --- |
+| one R-pentomino | gun | red | growth | 48 | 0 | 132 |
+| one R-pentomino | gun | blue | growth | 48 | 0 | 132 |
+| one R-pentomino | rush | red | opponent | 41 | 48 | 640 |
+| one R-pentomino | rush | blue | opponent | 41 | 48 | 640 |
+| one R-pentomino | growth | red | opponent | 0 | 41 | 364 |
+| one R-pentomino | growth | blue | opponent | 0 | 41 | 364 |
+| one R-pentomino | defence | red | growth | 48 | 43 | 640 |
+| one R-pentomino | defence | blue | growth | 48 | 43 | 640 |
+| one R-pentomino | hybrid | red | opponent | 34 | 48 | 640 |
+| one R-pentomino | hybrid | blue | opponent | 34 | 48 | 640 |
+| two R-pentomino | gun | red | growth | 46 | 0 | 132 |
+| two R-pentomino | gun | blue | growth | 46 | 0 | 132 |
+| two R-pentomino | rush | red | growth | 48 | 0 | 512 |
+| two R-pentomino | rush | blue | growth | 48 | 0 | 512 |
+| two R-pentomino | growth | red | opponent | 0 | 48 | 329 |
+| two R-pentomino | growth | blue | opponent | 0 | 48 | 329 |
+| two R-pentomino | defence | red | growth | 48 | 15 | 640 |
+| two R-pentomino | defence | blue | growth | 48 | 15 | 640 |
+| two R-pentomino | hybrid | red | opponent | 30 | 48 | 640 |
+| two R-pentomino | hybrid | blue | opponent | 30 | 48 | 640 |
+
+### Births optimized methuselah stress rates (training champions, not held-out)
+
+| Growth seed | Games | Wins | Draws | Losses | Win rate (draw=.5) | Damage ≥1 HP | Destruction |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| one R-pentomino | 10 | 4 | 0 | 6 | 40.0% | 10/10 (100.0%) | 4/10 (40.0%) |
+| two R-pentomino | 10 | 6 | 0 | 4 | 60.0% | 10/10 (100.0%) | 6/10 (60.0%) |
+
+### Births exact72-vs72 release check (gun required; defence baseline)
+
+| Attacker gun | Attack cost | Defence cost | Enemy contact | Enemy kill | Kill seconds | Winner | Red HP | Blue HP | Scored units against enemy | Static scored units |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| yes | 72 | 72 | 152 | 217 | 27.125 | red | 48 | 0 | 386 | 0 |
+| no | 36 | 72 | — | — | — | draw | 48 | 48 | 0 | 0 |
+| defence alone | 0 | 72 | 108 | 367 | 45.875 | blue | 0 | 48 | 384 | 0 |
+
+### Births family-champion gun relevance (matched escorts, no refill)
+
+| Champion | Combined cost | Combined winner | Combined kill | Combined HP lost | Escort winner | Escort kill | Escort HP lost | Gun improves win or lethal time | Static scored units |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 4 LWSS + gun vs eater | 72 | red | 156 | 48 | red | 156 | 48 | NO | 0 |
+| glider escort + gun vs eater | 72 | red | 175 | 48 | red | 175 | 48 | NO | 0 |
+| growth escort + gun vs eater | 68 | red | 237 | 48 | draw | — | 0 | YES | 0 |
+| blocks escort + gun vs eater | 70 | red | 356 | 48 | draw | — | 0 | YES | 0 |
+| 7 gliders + gun vs eater | 71 | red | 368 | 48 | draw | — | 0 | YES | 0 |
+| 4 LWSS + gun vs lower gun+eater | 72 | red | 149 | 48 | red | 149 | 48 | NO | 0 |
+| growth escort + gun vs lower gun+eater | 68 | red | 217 | 48 | draw | — | 0 | YES | 0 |
+
+### Recipes
+
+- **unopposed 4 LWSS** (36 cells): lwss@6,49/o2; lwss@13,43/o2; lwss@20,49/o2; lwss@27,43/o2
+- **unopposed 8 LWSS** (72 cells): lwss@4,44/o2; lwss@11,44/o2; lwss@18,44/o2; lwss@25,44/o2; lwss@4,50/o2; lwss@11,50/o2; lwss@18,50/o2; lwss@25,50/o2
+- **unopposed one glider** (5 cells): glider@52,12/o0
+- **unopposed 7 gliders** (35 cells): glider@36,4/o7; glider@42,4/o7; glider@36,10/o7; glider@42,10/o7; glider@36,16/o7; glider@42,16/o7; glider@36,22/o7
+- **unopposed one R-pentomino** (5 cells): rpentomino@52,52/o2
+- **unopposed two R-pentomino** (10 cells): rpentomino@52,52/o2; rpentomino@44,60/o2
+- **unopposed 18 stationary blocks (72 cells)** (72 cells): block@4,4/o0; block@11,4/o0; block@18,4/o0; block@25,4/o0; block@32,4/o0; block@39,4/o0; block@4,11/o0; block@11,11/o0; block@18,11/o0; block@25,11/o0; block@32,11/o0; block@39,11/o0; block@4,18/o0; block@11,18/o0; block@18,18/o0; block@25,18/o0; block@32,18/o0; block@39,18/o0
+- **4 LWSS + gun vs eater** (72 cells): gosperglidergun@51,4/o7; lwss@6,49/o2; lwss@13,43/o2; lwss@20,49/o2; lwss@27,43/o2
+- **glider escort + gun vs eater** (72 cells): gosperglidergun@51,4/o7; lwss@4,43/o2; lwss@14,43/o2; lwss@24,43/o2; glider@54,35/o0; block@50,29/o0
+- **growth escort + gun vs eater** (68 cells): gosperglidergun@51,4/o7; lwss@4,50/o4; lwss@18,50/o4; rpentomino@54,50/o0; rpentomino@48,42/o0; block@44,56/o0
+- **blocks escort + gun vs eater** (70 cells): gosperglidergun@51,4/o7; lwss@12,34/o2; lwss@22,34/o2; block@50,26/o0; block@44,26/o0; block@38,26/o0; block@32,26/o0
+- **7 gliders + gun vs eater** (71 cells): gosperglidergun@51,4/o7; glider@28,58/o0; glider@34,58/o0; glider@28,62/o0; glider@34,62/o0; glider@28,66/o0; glider@34,66/o0; glider@28,70/o0
+- **4 LWSS + gun vs lower gun+eater** (72 cells): gosperglidergun@51,4/o7; lwss@12,56/o2; lwss@26,50/o2; lwss@40,56/o2; lwss@54,50/o2
+- **growth escort + gun vs lower gun+eater** (68 cells): gosperglidergun@51,4/o7; lwss@4,46/o4; lwss@14,46/o4; rpentomino@54,54/o0; rpentomino@48,46/o0; block@44,60/o0
+- **8 LWSS vs upper gun+eater (interference)** (72 cells): lwss@4,44/o2; lwss@11,44/o2; lwss@18,44/o2; lwss@25,44/o2; lwss@4,50/o2; lwss@11,50/o2; lwss@18,50/o2; lwss@25,50/o2
+- **8 LWSS vs lower gun+eater** (72 cells): lwss@4,42/o4; lwss@11,42/o4; lwss@18,42/o4; lwss@25,42/o4; lwss@4,48/o4; lwss@11,48/o4; lwss@18,48/o4; lwss@25,48/o4
+- **4 LWSS vs block** (36 cells): lwss@6,49/o2; lwss@13,43/o2; lwss@20,49/o2; lwss@27,43/o2
+- **fastest vs eater** (72 cells): gosperglidergun@51,4/o7; lwss@6,49/o2; lwss@13,43/o2; lwss@20,49/o2; lwss@27,43/o2
+- **fastest vs functioning gun+eater** (72 cells): gosperglidergun@51,4/o7; lwss@12,56/o2; lwss@26,50/o2; lwss@40,56/o2; lwss@54,50/o2
+- **old mixed gun-preserving breach** (68 cells): gosperglidergun@51,4/o7; lwss@8,49/o2; lwss@18,49/o2; rpentomino@54,57/o0; rpentomino@48,49/o0; block@44,63/o0
+- **tournament gun** (36 cells): gosperglidergun@51,4/o7
+- **tournament rush** (45 cells): lwss@4,42/o4; lwss@14,42/o4; lwss@24,42/o4; lwss@4,49/o4; lwss@14,49/o4
+- **tournament growth** (10 cells): rpentomino@54,25/o0; rpentomino@54,64/o0
+- **tournament defence** (18 cells): eater1@52,35/o4; eater1@52,57/o6; block@51,46/o0
+- **tournament hybrid** (68 cells): gosperglidergun@51,4/o7; lwss@8,49/o2; lwss@18,49/o2; rpentomino@54,57/o0; rpentomino@48,49/o0; block@44,63/o0
+- **exact72 gun-dependent breach** (72 cells): gosperglidergun@51,4/o7; lwss@4,46/o4; lwss@14,46/o4; rpentomino@54,54/o0; rpentomino@48,46/o0; block@44,60/o0; block@4,4/o0
+- **exact72 functioning gun+eater defence** (72 cells): gosperglidergun@68,56/o5; eater1@69,35/o0; glider@110,4/o2; block@90,72/o0; block@98,72/o0; block@106,72/o0; block@90,80/o0; block@98,80/o0; block@106,80/o0
+
+<!-- END GENERATED BIRTHS TABLES -->

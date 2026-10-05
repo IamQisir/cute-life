@@ -236,6 +236,26 @@ html, body {
 }
 .status b { font-weight: 700; color: var(--blue); }
 .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; }
+.stamp-controls {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 3px;
+  background: #fffbef;
+  border: 1.6px solid var(--ink-soft);
+  border-radius: var(--sketch);
+  box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.06);
+}
+.stamp-controls[hidden] { display: none; }
+.stamp-controls .btn { display: flex; align-items: center; justify-content: center; padding: 4px; min-width: 44px; min-height: 44px; touch-action: manipulation; }
+.stamp-controls .toolbar-label { display: none; }
+.stamp-controls .btn:focus-visible, .arena-picker .btn:focus-visible { outline: 2px dashed var(--blue); outline-offset: 3px; }
+.arena-picker { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.arena-picker .btn { min-height: 44px; touch-action: manipulation; }
 
 .speed { display: flex; align-items: center; gap: 4px; font-size: 18px; color: var(--ink-soft); }
 .speed input { width: 90px; accent-color: var(--red); }
@@ -576,6 +596,7 @@ html, body {
 }
 
 @media (max-width: 720px) {
+  .stamp-controls { left: 0; top: auto; align-self: center; }
   .palette {
     display: flex;
     top: auto;

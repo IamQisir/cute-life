@@ -12,6 +12,9 @@ import {
 import { encodeRle } from '../src/share/rle';
 import { PATTERNS } from '../src/life/patterns';
 import { classify } from '../src/life/clusters';
+import { CATALOG } from '../src/life/catalog';
+import { placePattern } from '../src/life/patterns';
+import { orientPoints } from '../src/life/orientation';
 
 /** Wall-clock limits catch big regressions, not exact speed: shared CI machines are ~2x slower. */
 const SLOW = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.CI ? 3 : 1;
@@ -485,7 +488,7 @@ describe('arena sizes in links', () => {
 
   it('rejects unknown sizes and armies that do not fit the stated size', () => {
     const hash = toChallengeHash({ army: largeRed, size: 'large' });
-    expect(fromChallengeHash(hash.replace('s=large', 's=huge'))).toBeNull();
+    expect(fromChallengeHash(hash.replace('s=large', 's=unknown'))).toBeNull();
     expect(fromChallengeHash(hash.replace('&s=large', ''))).toBeNull();
   });
 
@@ -530,25 +533,24 @@ describe('AI uses the whole palette', () => {
 
 
 describe('garden rules', () => {
-  it('uses garden small by default and keeps each garden entirely in the neutral deployment gap', () => {
+  it('uses garden small by default and keeps the existing simulation presets', () => {
     expect(DEFAULT_ARENA).toBe(ARENA_PRESETS.small);
     const expected = {
       small: [28, 20, 20, 150, 3, 11, 16, 7, 12],
       medium: [40, 28, 32, 220, 4, 16, 23, 10, 17],
       large: [56, 40, 50, 300, 5, 23, 32, 15, 24],
       xl: [80, 56, 100, 360, 6, 34, 45, 22, 33],
+      huge: [120, 72, 180, 480, 6, 54, 65, 30, 41],
     };
     for (const size of ARENA_SIZES) {
       const cfg = ARENA_PRESETS[size];
       const garden = cfg.garden!;
       expect([cfg.width, cfg.height, cfg.budget, cfg.generations, cfg.buffer,
         garden.x0, garden.x1, garden.y0, garden.y1]).toEqual(expected[size]);
-      expect(garden.x0).toBeGreaterThan(deployZone(cfg, RED).x1);
-      expect(garden.x1).toBeLessThan(deployZone(cfg, BLUE).x0);
       expect(garden.y0).toBeGreaterThanOrEqual(0);
       expect(garden.y1).toBeLessThan(cfg.height);
       expect(cfg).toMatchObject({ wrapX: false, wrapY: true, endOnExtinction: true });
-      if (size === 'xl') continue; // xl only exists under the garden rules
+      if (size === 'xl' || size === 'huge') continue; // these sizes only have garden rules
       expect(LEGACY_PRESETS[size]).toMatchObject({ buffer: 1 });
       expect(LEGACY_PRESETS[size].garden).toBeUndefined();
     }
@@ -578,18 +580,18 @@ describe('garden rules', () => {
     expect(simulateBattle(cfg, [], glider).generations).toBe(0);
     expect(simulateBattle({ ...cfg, endOnExtinction: false }, [[1, 1]], glider).generations).toBeGreaterThan(1);
     // A birth in the objective on the extinction step still counts.
-    const custom = { ...LEGACY_PRESETS.small, garden: { x0: 4, x1: 4, y0: 3, y1: 5 }, endOnExtinction: true };
+    const custom = { ...LEGACY_PRESETS.small, garden: { x0: 4, x1: 4, y0: 3, y1: 3 }, endOnExtinction: true };
     expect(simulateBattle(custom, [[3, 4], [4, 4], [5, 4]], [[20, 1]])).toMatchObject({
-      generations: 1, winner: 'red', score: { red: 3, blue: 0 },
+      generations: 1, winner: 'red', score: { red: 1, blue: 0 },
     });
   });
 
   it('still stops a settled garden board and reports score throughout history', () => {
-    const cfg = { ...DEFAULT_ARENA, garden: { x0: 3, x1: 5, y0: 3, y1: 5 } };
+    const cfg = { ...DEFAULT_ARENA, garden: { x0: 4, x1: 4, y0: 3, y1: 3 } };
     const result = simulateBattle(cfg, [[3, 4], [4, 4], [5, 4]], [[20, 4], [21, 4], [22, 4]], { history: true });
     expect(result.generations).toBe(2);
-    expect(result.score).toEqual({ red: 5, blue: 0 });
-    expect(result.history!.map((entry) => entry.scoreRed)).toEqual([3, 5, 5]);
+    expect(result.score).toEqual({ red: 1, blue: 0 });
+    expect(result.history!.map((entry) => entry.scoreRed)).toEqual([0, 1, 1]);
   });
 
   it('rejects malformed garden bounds and extinction flags', () => {
@@ -709,5 +711,90 @@ describe('xl arena', () => {
     const v2 = toChallengeHash({ army: [[3, 4], [4, 4], [5, 4]], size: 'xl', rules: 'garden' });
     expect(fromChallengeHash(v2)?.size).toBe('xl');
     expect(fromChallengeHash(v2.replace('c=2', 'c=1'))).toBeNull();
+  });
+});
+
+describe('huge arena', () => {
+  it('appends huge without changing the existing size order or legacy presets', () => {
+    expect(ARENA_SIZES).toEqual(['small', 'medium', 'large', 'xl', 'huge']);
+    expect(presetFor('legacy', 'huge')).toBeNull();
+    expect(presetFor('legacy', 'xl')).toBeNull();
+    expect(deployZone(ARENA_PRESETS.huge, RED)).toEqual({ x0: 0, x1: 57, y0: 0, y1: 71 });
+    expect(deployZone(ARENA_PRESETS.huge, BLUE)).toEqual({ x0: 62, x1: 119, y0: 0, y1: 71 });
+  });
+
+  it('fits Gosper, Simkin and p46 unrotated in huge, and p46 upright in xl', () => {
+    for (const id of ['gosperglidergun', 'simkinglidergun', 'p46gun']) {
+      const pattern = CATALOG.find((p) => p.id === id)!;
+      for (const size of id === 'p46gun' ? ['huge', 'xl'] as const : ['huge'] as const) {
+        const cfg = ARENA_PRESETS[size];
+        const points = orientPoints(placePattern(pattern, 0, 0), { rot: size === 'xl' ? 1 : 0, flip: false });
+        const minX = Math.min(...points.map(([x]) => x));
+        const minY = Math.min(...points.map(([, y]) => y));
+        const maxX = Math.max(...points.map(([x]) => x)) - minX;
+        for (const team of [RED, BLUE] as const) {
+          const z = deployZone(cfg, team);
+          const x0 = team === RED ? z.x0 : z.x1 - maxX;
+          const army = points.map(([x, y]): Pt => [x - minX + x0, y - minY]);
+          expect(validateDeployment(cfg, team, army)).toEqual({ ok: true });
+        }
+      }
+    }
+  });
+
+  it.each(['xl', 'huge'] as const)('round-trips oriented armies and edge cells in %s links', (size) => {
+    const cfg = ARENA_PRESETS[size];
+    const points = orientPoints([[1, 0], [2, 1], [0, 2], [1, 2], [2, 2]], { rot: 3, flip: true });
+    const red: Pt[] = [...points.map(([x, y]): Pt => [x + 4, y + 4]), [deployZone(cfg, RED).x1, cfg.height - 1]];
+    const blue: Pt[] = [[deployZone(cfg, BLUE).x0, 0], [cfg.width - 1, cfg.height - 1]];
+    const challenge = toChallengeHash({ army: red, size });
+    const replay = toReplayHash({ red, blue, size });
+    expect(challenge).toContain(`s=${size}`);
+    expect(replay).toContain(`s=${size}`);
+    expect(fromChallengeHash(challenge)).toEqual({ army: sorted(red), size, rules: 'garden' });
+    expect(fromReplayHash(replay)).toEqual({ red: sorted(red), blue, size, rules: 'garden' });
+    expect(fromChallengeHash(challenge.replace('c=2', 'c=1'))).toBeNull();
+    expect(fromReplayHash(replay.replace('r=2', 'r=1'))).toBeNull();
+  });
+
+  it('builds full-budget armies at every effort and runs a full huge battle within seconds', () => {
+    const cfg = ARENA_PRESETS.huge;
+    chooseDeployment(cfg, RED, 2, 1234);
+    const start = performance.now();
+    const searches: { team: Team; stars: Stars; ms: number }[] = [];
+    for (const team of [RED, BLUE] as const) for (const stars of [1, 2, 3, 4, 5] as const) {
+      const before = performance.now();
+      // The game caps the search at 1.5 s; the cap must hold even for 5 stars on huge.
+      const army = chooseDeployment(cfg, team, stars, 1001, 1500);
+      const ms = performance.now() - before;
+      searches.push({ team, stars, ms });
+      expect(army).toHaveLength(cfg.budget);
+      expect(validateDeployment(cfg, team, army)).toEqual({ ok: true });
+      expect(ms).toBeLessThan(1500 + 1000 * SLOW);
+    }
+    console.info('Huge AI search elapsed ms:', searches);
+    let red: Pt[] = [], blue: Pt[] = [];
+    for (let seed = 0; seed < 200; seed++) {
+      red = chooseDeployment(cfg, RED, 1, seed);
+      blue = chooseDeployment(cfg, BLUE, 1, seed + 10_000);
+      if (simulateBattle(cfg, red, blue).generations === cfg.generations) break;
+    }
+    const before = performance.now();
+    const result = simulateBattle(cfg, red, blue);
+    expect(result.generations).toBe(480);
+    const elapsed = performance.now() - before;
+    console.info(`Huge AI all efforts ${(before - start).toFixed(1)} ms; full battle ${elapsed.toFixed(1)} ms`);
+    expect(elapsed).toBeLessThan(2000 * SLOW);
+  }, 30_000);
+});
+
+describe('AI search time budget', () => {
+  it('is deterministic without a budget and stops early with one', () => {
+    const cfg = ARENA_PRESETS.xl;
+    expect(chooseDeployment(cfg, BLUE, 3, 77)).toEqual(chooseDeployment(cfg, BLUE, 3, 77));
+    const before = performance.now();
+    const army = chooseDeployment(ARENA_PRESETS.huge, BLUE, 5, 77, 50);
+    expect(performance.now() - before).toBeLessThan(50 + 1000 * SLOW);
+    expect(validateDeployment(ARENA_PRESETS.huge, BLUE, army)).toEqual({ ok: true });
   });
 });

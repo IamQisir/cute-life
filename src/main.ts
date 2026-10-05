@@ -20,6 +20,7 @@ import {
   toStampHash,
 } from './life/library';
 import { type Pattern, placePattern } from './life/patterns';
+import { type Orientation, flipOrientation, orientPoints, rotateOrientation } from './life/orientation';
 import { ArenaView } from './render/arenaView';
 import { Camera } from './render/camera';
 import { type FollowTarget, followTarget } from './render/follow';
@@ -84,7 +85,7 @@ async function main() {
   let lastStep = 0;
   let hand = false;
   let pattern: Pattern | null = null;
-  let rotation = 0;
+  let orientation: Orientation = { rot: 0, flip: false };
   let hover: [number, number] | null = null;
   let started = false;
   let lastPopAt = 0;
@@ -137,6 +138,8 @@ async function main() {
       hud.setSound(audio.cycleMode());
     },
     toggleHand,
+    rotateStamp,
+    flipStamp,
     toggleRecord,
     openHelp,
     share() {
@@ -162,7 +165,7 @@ async function main() {
     },
     pickPattern(p) {
       selectPattern(p);
-      if (p) hud.toast('click to place ~ R rotates ~ shift+click keeps stamping');
+      if (p) hud.toast('click to place ~ R rotates ~ F flips ~ shift+click keeps stamping');
     },
   });
 
@@ -251,16 +254,23 @@ async function main() {
 
   function stampPoints(x: number, y: number): [number, number][] {
     if (!pattern) return [];
-    let pts = placePattern(pattern, 0, 0);
-    for (let i = 0; i < rotation; i++) pts = pts.map(([px, py]) => [-py, px]);
+    const pts = orientPoints(placePattern(pattern, 0, 0), orientation);
     return pts.map(([px, py]) => [px + x, py + y]);
   }
 
   /** The current stamp, shown highlighted in whichever palette is visible. */
   function selectPattern(p: Pattern | null) {
-    if (p !== pattern) rotation = 0;
+    if (p !== pattern) orientation = { rot: 0, flip: false };
     pattern = p;
     hud.setPattern(p);
+  }
+
+  function rotateStamp() {
+    if (pattern) orientation = rotateOrientation(orientation);
+  }
+
+  function flipStamp() {
+    if (pattern) orientation = flipOrientation(orientation);
   }
 
   /** Drop the current stamp at a cell, in whichever mode is active. */
@@ -493,6 +503,7 @@ async function main() {
     random: () => battle.randomArmy(performance.now()),
     clear: () => battle.clearArmy(performance.now()),
     setStars: (s) => battle.setStars(s),
+    setSize: (size) => battle.setSize(size, performance.now()),
     challenge(name) {
       const link = battle.challengeLink(name.trim() || undefined);
       if (link) copyText(link, 'challenge link copied! send it to a friend ~');
@@ -545,7 +556,7 @@ async function main() {
     const { width, height } = battle.cfg;
     framedPhase = battle.phase;
     const a = battleHud.freeArea(cam.w, cam.h);
-    cam.zoom = Math.max(4, Math.min((a.right - a.left) / width, (a.bottom - a.top) / height));
+    cam.zoom = Math.max(2, Math.min((a.right - a.left) / width, (a.bottom - a.top) / height));
     battle.sim.fitZoom = cam.zoom;
     const cx = (a.left + a.right) / 2;
     const cy = (a.top + a.bottom) / 2;
@@ -901,9 +912,8 @@ async function main() {
       selectPattern(null);
       clearSelection();
     },
-    rotateStamp() {
-      rotation = (rotation + 1) % 4;
-    },
+    rotateStamp,
+    flipStamp,
     setHover(c) {
       hover = c;
     },

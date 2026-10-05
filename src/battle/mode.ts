@@ -3,6 +3,10 @@
 // battle mode is active.
 
 import { type Stars, chooseDeployment } from './ai';
+
+/** The longest the AI may search before the reveal (it runs on the main thread). */
+const AI_THINK_MS = 1500;
+import { type AiArenaSize, readArenaSize, rememberArenaSize } from './arenaPreference';
 import {
   ARENA_PRESETS,
   type ArenaConfig,
@@ -13,7 +17,8 @@ import {
   type Team,
   type Winner,
   decideWinner,
-  deployZone,
+  deployZoneRects,
+  inDeployZone,
   presetFor,
   placeArmies,
   simulateBattle,
@@ -64,10 +69,11 @@ const FINALE_GEN_PER_SEC = 4;
 const MAX_STEPS_PER_FRAME = 4;
 
 export class BattleMode {
-  /** Battles against the AI use the xl arena; smaller presets only replay old links. */
-  size: ArenaSize = 'xl';
+  /** Linked battles never overwrite the player's preferred AI arena. */
+  private aiSize = readArenaSize();
+  size: ArenaSize = this.aiSize;
   rules: Rules = 'garden';
-  cfg: ArenaConfig = ARENA_PRESETS.xl;
+  cfg: ArenaConfig = ARENA_PRESETS[this.aiSize];
   sim = new BattleSim(this.cfg);
   phase: Phase = 'deploy';
   opponent: Opponent = { kind: 'ai', stars: 3 };
@@ -97,16 +103,12 @@ export class BattleMode {
   }
 
   layout(): ArenaLayout {
-    const z = (t: Team) => {
-      const { x0, x1 } = deployZone(this.cfg, t);
-      return { x0, x1 };
-    };
     return {
       width: this.cfg.width,
       height: this.cfg.height,
       wrapX: this.cfg.wrapX,
       wrapY: this.cfg.wrapY,
-      zones: { 1: z(RED), 2: z(BLUE) },
+      zones: { 1: deployZoneRects(this.cfg, RED), 2: deployZoneRects(this.cfg, BLUE) },
     };
   }
 
@@ -124,8 +126,9 @@ export class BattleMode {
     this.opponent = opponent;
     // Challenges and replays bring their own arena size and rules; the AI uses current rules.
     const rules: Rules = opponent.kind === 'ai' ? 'garden' : opponent.rules;
-    const size = opponent.kind === 'ai' ? 'xl' : opponent.size;
-    if (rules !== this.rules || size !== this.size) this.applySize(size, rules);
+    const size = opponent.kind === 'ai' ? this.aiSize : opponent.size;
+    const resized = rules !== this.rules || size !== this.size;
+    if (resized) this.applySize(size, rules);
     this.outcome = null;
     this.paused = false;
     if (opponent.kind === 'replay') {
@@ -133,20 +136,28 @@ export class BattleMode {
       this.army = opponent.red;
       this.enemy = opponent.blue;
       this.reveal(now);
+      if (resized) this.hooks.resized();
       return;
     }
     this.myTeam = opponent.kind === 'challenge' ? BLUE : RED;
-    if (!keepArmy) this.army = [];
+    if (!keepArmy || resized) this.army = [];
     this.enemy = [];
     this.setPhase('deploy', now);
     this.sim.showArmy(this.myTeam, this.army, now);
+    if (resized) this.hooks.resized();
+  }
+
+  setSize(size: AiArenaSize, now: number) {
+    if (this.opponent.kind !== 'ai' || this.phase !== 'deploy' || size === this.size) return;
+    this.aiSize = size;
+    rememberArenaSize(size);
+    this.start(this.opponent, now);
   }
 
   /** Toggle/paint a cell during deployment. Returns the painted value, or null if not allowed. */
   paint(x: number, y: number, now: number, value?: boolean): boolean | null {
     if (this.phase !== 'deploy') return null;
-    const zone = deployZone(this.cfg, this.myTeam);
-    if (x < zone.x0 || x > zone.x1 || y < zone.y0 || y > zone.y1) return null;
+    if (!inDeployZone(this.cfg, this.myTeam, x, y)) return null;
     const i = this.army.findIndex(([ax, ay]) => ax === x && ay === y);
     const v = value ?? i < 0;
     if (v && i < 0) {
@@ -165,8 +176,7 @@ export class BattleMode {
   /** Why a stamp can't be placed, or null if it can. */
   stampProblem(points: Pt[]): 'zone' | 'budget' | null {
     if (this.phase !== 'deploy') return 'zone';
-    const zone = deployZone(this.cfg, this.myTeam);
-    if (points.some(([x, y]) => x < zone.x0 || x > zone.x1 || y < zone.y0 || y > zone.y1)) return 'zone';
+    if (points.some(([x, y]) => !inDeployZone(this.cfg, this.myTeam, x, y))) return 'zone';
     const have = new Set(this.army.map(([x, y]) => `${x},${y}`));
     const fresh = points.filter(([x, y]) => !have.has(`${x},${y}`));
     return fresh.length > this.budgetLeft ? 'budget' : null;
@@ -203,7 +213,6 @@ export class BattleMode {
     // Links are validated against an existing preset before they get here.
     this.cfg = presetFor(rules, size) ?? ARENA_PRESETS.xl;
     this.sim = new BattleSim(this.cfg);
-    this.hooks.resized();
   }
 
   setStars(stars: Stars) {
@@ -223,7 +232,8 @@ export class BattleMode {
     this.setPhase('thinking', now);
     // Let the HUD paint "thinking..." before the (synchronous) search runs.
     setTimeout(() => {
-      this.enemy = chooseDeployment(this.cfg, this.enemyTeam, stars, Math.floor(Math.random() * 2 ** 31));
+      // Capped so a huge arena or a slow phone never freezes the page for long.
+      this.enemy = chooseDeployment(this.cfg, this.enemyTeam, stars, Math.floor(Math.random() * 2 ** 31), AI_THINK_MS);
       this.reveal(performance.now());
     }, 60);
   }

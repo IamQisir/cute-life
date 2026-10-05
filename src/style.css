@@ -6,6 +6,18 @@
   --paper: #f2ece0;
   --sketch: 255px 15px 225px 15px / 15px 225px 15px 255px;
   --sketch-2: 15px 255px 15px 225px / 225px 15px 255px 15px;
+  --font-hand: 'Patrick Hand', 'Comic Sans MS', cursive;
+  --font-title: 'Caveat', cursive;
+}
+/* Latin glyphs keep the English fonts; Chinese and Japanese fall through to a
+   handwriting font of their own (loaded by src/i18n/fonts.ts). */
+:root:lang(zh) {
+  --font-hand: 'Patrick Hand', 'ZCOOL KuaiLe', cursive;
+  --font-title: 'Caveat', 'ZCOOL KuaiLe', cursive;
+}
+:root:lang(ja) {
+  --font-hand: 'Patrick Hand', 'Yomogi', cursive;
+  --font-title: 'Caveat', 'Yomogi', cursive;
 }
 
 * { box-sizing: border-box; }
@@ -16,7 +28,7 @@ html, body {
   overflow: hidden;
   background: var(--paper);
   color: var(--ink);
-  font-family: 'Patrick Hand', 'Comic Sans MS', cursive;
+  font-family: var(--font-hand);
   user-select: none;
   -webkit-user-select: none;
   touch-action: none;
@@ -52,7 +64,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-family: 'Caveat', cursive;
+  font-family: var(--font-title);
   font-weight: 700;
   font-size: 40px;
   line-height: 1;
@@ -174,7 +186,7 @@ html, body {
 .mode-btn:focus-visible, .mode-card:focus-visible { outline: 2px dashed var(--blue); outline-offset: 3px; }
 .mode-card:disabled { color: var(--ink-soft); border-style: dashed; cursor: default; }
 .mode-copy { display: flex; flex-direction: column; min-width: 0; }
-.mode-name { font-family: 'Caveat', cursive; font-size: 27px; line-height: 1; }
+.mode-name { font-family: var(--font-title); font-size: 27px; line-height: 1; }
 .mode-description { font-size: 16px; }
 .mode-soon { align-self: flex-start; margin-top: 3px; padding: 0 7px; font-size: 14px; background: var(--paper); border-radius: var(--sketch); }
 .mode-preview { display: flex; align-items: center; justify-content: center; flex: 0 0 64px; height: 54px; }
@@ -196,7 +208,7 @@ html, body {
   padding: 4px;
 }
 .palette .label {
-  font-family: 'Caveat', cursive;
+  font-family: var(--font-title);
   font-size: 22px;
   color: var(--ink-soft);
   text-align: center;
@@ -217,8 +229,12 @@ html, body {
 .card canvas { display: block; margin: 0 auto; }
 .card div { font-size: 16px; }
 /* Long names shrink a little, then hyphenate rather than spill out of the card. */
-.card .card-name { overflow-wrap: anywhere; hyphens: auto; line-height: 1.15; }
+.card .card-name { overflow-wrap: anywhere; hyphens: auto; line-height: 1.15; text-wrap: balance; }
 .card .card-name.long { font-size: 13px; }
+/* Two-line names balance (軽量級 / 宇宙船); strict keeps small kana like ッ off a line start. */
+:root:lang(ja) { line-break: strict; }
+/* Short wrapped copy: even lines, never one stray character (mostly for CJK). */
+.welcome-subtitle, .welcome-playline, .welcome-character figcaption, .onboarding-note p, .modal-note, .toast { text-wrap: balance; }
 
 /* Full-width box so its width never follows the status text: a shrink-to-fit
    box centred at left: 50% re-wraps the buttons as the counts grow. */
@@ -233,7 +249,7 @@ html, body {
   gap: 6px;
 }
 .status {
-  font-family: 'Caveat', cursive;
+  font-family: var(--font-title);
   font-size: 34px;
   color: var(--red);
   padding: 0 18px 4px;
@@ -276,13 +292,16 @@ html, body {
   top: 76px;
   left: 50%;
   transform: translateX(-50%) rotate(-1deg);
-  font-family: 'Caveat', cursive;
+  font-family: var(--font-title);
   font-size: 26px;
   color: var(--ink-soft);
   text-align: center;
   pointer-events: none;
   transition: opacity 1.2s ease;
   white-space: nowrap;
+  /* Centred at left: 50%, shrink-to-fit would cap it at half the screen (CJK lines wrap). */
+  width: max-content;
+  max-width: calc(100vw - 32px);
 }
 .hint.gone { opacity: 0; }
 
@@ -312,7 +331,7 @@ html, body {
 .sleeper img { width: 100%; height: 100%; animation: breathe 3.4s ease-in-out infinite; }
 .sleeper .z {
   position: absolute;
-  font-family: 'Caveat', cursive;
+  font-family: var(--font-title);
   font-size: 20px;
   color: var(--ink-soft);
   animation: zz 3s ease-in infinite;
@@ -347,7 +366,7 @@ html, body {
   gap: 10px;
   align-items: center;
 }
-.modal-title { font-family: 'Caveat', cursive; font-size: 36px; color: var(--red); line-height: 1; }
+.modal-title { font-family: var(--font-title); font-size: 36px; color: var(--red); line-height: 1; }
 .modal video {
   width: 100%;
   max-height: 55vh;
@@ -379,7 +398,7 @@ html, body {
 .battle-head[hidden] { display: none; }
 .battle-title, .battle-sub, .score-gen { max-width: 100%; min-width: 0; }
 .battle-title {
-  font-family: 'Caveat', cursive;
+  font-family: var(--font-title);
   font-weight: 700;
   font-size: 38px;
   line-height: 1;
@@ -390,7 +409,7 @@ html, body {
 .battle-sub { font-size: 18px; color: var(--ink-soft); overflow-wrap: anywhere; line-height: 1.2; }
 .scoreboard { width: 100%; text-align: center; margin-top: 2px; }
 .score-row { display: flex; align-items: center; gap: 10px; }
-.score { font-family: 'Caveat', cursive; font-weight: 700; font-size: 26px; min-width: 76px; }
+.score { font-family: var(--font-title); font-weight: 700; font-size: 26px; min-width: 76px; }
 .score.red, .result-score .red, .result-title.red { color: var(--red); }
 .score.blue, .result-score .blue, .result-title.blue { color: var(--blue); }
 .score.red { text-align: right; }
@@ -420,7 +439,7 @@ html, body {
 }
 .battle-side { right: 14px; width: 200px; gap: 14px; }
 .side-group .label {
-  font-family: 'Caveat', cursive;
+  font-family: var(--font-title);
   font-size: 22px;
   color: var(--ink-soft);
   text-align: center;
@@ -487,9 +506,9 @@ html, body {
 @media (min-width: 900px) {
   .result-card { top: auto; bottom: 18px; transform: translateX(-50%) rotate(-1deg); }
 }
-.result-title { font-family: 'Caveat', cursive; font-weight: 700; font-size: 56px; line-height: 1; }
+.result-title { font-family: var(--font-title); font-weight: 700; font-size: 56px; line-height: 1; }
 .result-title.draw { color: var(--ink); }
-.result-score { font-family: 'Caveat', cursive; font-weight: 700; font-size: 40px; line-height: 1; }
+.result-score { font-family: var(--font-title); font-weight: 700; font-size: 40px; line-height: 1; }
 .result-detail { font-size: 16px; color: var(--ink-soft); margin-bottom: 4px; }
 
 @media (max-width: 720px) {
@@ -579,7 +598,7 @@ html, body {
   display: grid;
   place-items: center;
   min-height: 54px;
-  font-family: 'Caveat', cursive;
+  font-family: var(--font-title);
   font-size: 22px;
   color: var(--ink-soft);
   border-style: dashed;
@@ -672,3 +691,17 @@ html, body {
   .score-gen { font-size: 13px; }
 }
 .hint { white-space: pre-line; }
+
+/* ---- language picker (settings menu) ---------------------------------- */
+.lang-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1.4px dashed rgba(122, 106, 92, 0.45);
+  color: var(--ink-soft);
+}
+.lang-row .toolbar-icon { flex-shrink: 0; }
+.lang-btn { flex: 1; padding: 3px 4px; font-size: 16px; white-space: nowrap; }
+.lang-btn:focus-visible { outline: 2px dashed var(--blue); outline-offset: 3px; }

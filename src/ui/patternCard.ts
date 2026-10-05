@@ -1,6 +1,7 @@
 // A palette card for a pattern: click to select it as a stamp, or press and
 // drag it straight onto the canvas. Shared by the sandbox and battle palettes.
 
+import { t } from '../i18n';
 import { type Pattern, cellCount } from '../life/patterns';
 
 export interface CardHandlers {
@@ -10,6 +11,20 @@ export interface CardHandlers {
   drag(p: Pattern, clientX: number, clientY: number): void;
   /** Released after dragging, at this point. */
   drop(p: Pattern, clientX: number, clientY: number): void;
+}
+
+/** CJK characters are about twice as wide as Latin letters at the same size. */
+const WIDE = /[\u3000-\u9fff\uac00-\ud7af\uff00-\uffef]/;
+
+/**
+ * Whether a card name needs the smaller font: a word too long to wrap at a
+ * space (pentadecathlon, a custom stamp name), or a CJK name too wide for one
+ * line (CJK lines break anywhere, so the whole name counts, e.g. イーター 1).
+ */
+export function longName(label: string): boolean {
+  const width = (text: string) => [...text].reduce((n, ch) => n + (WIDE.test(ch) ? 2.4 : 1), 0);
+  const parts = WIDE.test(label) ? [label] : label.split(/\s+/);
+  return Math.max(...parts.map(width)) > 11;
 }
 
 /** Pixels the pointer must travel before a press becomes a drag. */
@@ -52,16 +67,16 @@ export function patternCard(
   h: CardHandlers,
   showCost = false,
   tooltip?: string,
+  label = p.name,
 ): HTMLElement {
   const card = document.createElement('div');
   card.className = 'card';
-  card.title = tooltip ? `${tooltip}\n(click to select, or drag onto the board)` : 'click to select, or drag onto the board';
-  const label = document.createElement('div');
-  label.className = 'card-name';
-  label.textContent = p.name;
-  // One long word (pentadecathlon, a custom stamp name) can't wrap at a space.
-  if (Math.max(...p.name.split(/\s+/).map((w) => w.length)) > 11) label.classList.add('long');
-  card.append(patternThumb(p, cell), label);
+  card.title = tooltip ?? t.palette.cardHint;
+  const name = document.createElement('div');
+  name.className = 'card-name';
+  name.textContent = label;
+  if (longName(label)) name.classList.add('long');
+  card.append(patternThumb(p, cell), name);
   if (showCost) {
     const cost = document.createElement('div');
     cost.className = 'cost';

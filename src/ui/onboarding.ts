@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { drawBud } from '../render/cellArt';
 import { WorldView } from '../render/world';
 import type { Mode } from './modes';
@@ -90,16 +91,16 @@ export class Onboarding {
     this.overlay!.classList.add('onboarding-rules', 'onboarding-help');
     this.note.style.cssText = '';
     const actions = element('div', 'onboarding-actions');
-    const tour = button('show me around', () => {
+    const tour = button(t.help.tour, () => {
       this.unmount();
       this.openTour(true);
     });
-    actions.append(tour, button('watch the intro again', () => {
+    actions.append(tour, button(t.help.intro, () => {
       this.unmount();
       // Keep replay and its optional tour/rules from changing first-visit flags.
       this.welcome.start((tour) => { if (tour) this.openTour(true, false); }, true);
-    }), button('back to my world', () => this.unmount()));
-    this.note.replaceChildren(this.heading('a little help ~'), actions);
+    }), button(t.help.back, () => this.unmount()));
+    this.note.replaceChildren(this.heading(t.help.title), actions);
     tour.focus();
   }
 
@@ -178,15 +179,15 @@ export class Onboarding {
     if (!rect) { this.dismiss(); return; }
     const step = TOUR_STEPS[this.step];
     const dots = element('div', 'onboarding-dots');
-    dots.setAttribute('aria-label', `step ${this.step + 1} of ${TOUR_STEPS.length}`);
+    dots.setAttribute('aria-label', t.help.step(this.step + 1, TOUR_STEPS.length));
     TOUR_STEPS.forEach((_, index) => {
       const dot = element('span', '', index === this.step ? '●' : '○');
       dot.setAttribute('aria-hidden', 'true');
       dots.append(dot);
     });
     const actions = element('div', 'onboarding-actions');
-    actions.append(dots, button('skip', () => this.dismiss()), button(
-      this.step === TOUR_STEPS.length - 1 ? 'done' : 'next',
+    actions.append(dots, button(t.help.skip, () => this.dismiss()), button(
+      this.step === TOUR_STEPS.length - 1 ? t.help.done : t.help.next,
       () => { this.step++; this.renderStep(); },
     ));
     this.note.replaceChildren(this.heading(step.title), element('p', '', step.text), actions);
@@ -246,7 +247,7 @@ export class Onboarding {
       this.note.append(row);
     }
     if (card.footer) this.note.append(element('p', 'onboarding-footer', card.footer));
-    const close = button('got it', () => this.dismiss());
+    const close = button(t.help.gotIt, () => this.dismiss());
     this.note.append(close);
     close.focus();
   }

@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import type { SoundMode } from '../audio/musicBox';
 import type { PlayableMode } from './modes';
 import type { IconName } from './icons';
@@ -10,16 +11,16 @@ export function settingsItems(mode: PlayableMode) {
 }
 
 export const SOUND_STATES: Record<SoundMode, { label: string; icon: IconName; next: string }> = {
-  all: { label: 'sound on', icon: 'soundAll', next: 'music only' },
-  music: { label: 'music only', icon: 'soundMusic', next: 'sound off' },
-  off: { label: 'sound off', icon: 'soundOff', next: 'sound on' },
+  all: { label: t.sound.all, icon: 'soundAll', next: t.sound.music },
+  music: { label: t.sound.music, icon: 'soundMusic', next: t.sound.off },
+  off: { label: t.sound.off, icon: 'soundOff', next: t.sound.all },
 };
 
 export function soundState(mode: SoundMode) {
   const state = SOUND_STATES[mode];
-  return { ...state, title: `${state.label} · click for ${state.next}` };
+  return { ...state, title: t.sound.title(state.label, state.next) };
 }
 
 export function activeToolLabel(select: boolean, move: boolean, mode: PlayableMode) {
-  return mode === 'battle' ? '' : [select && 'select', move && 'move'].filter(Boolean).join(' + ');
+  return mode === 'battle' ? '' : [select && t.toolbar.select, move && t.toolbar.move].filter(Boolean).join(' + ');
 }

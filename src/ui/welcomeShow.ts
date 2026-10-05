@@ -10,6 +10,7 @@ import { borrowSandbox, type WelcomeHost } from './welcomeSandbox';
 import { buildTitleScene, welcomeTitleCamera } from './welcomeTitleScene';
 import { introSource, introState } from './welcomeVideo';
 import { perf } from '../render/perf';
+import { t } from '../i18n';
 import './welcomeShow.css';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string) {
@@ -168,9 +169,9 @@ export class WelcomeShow {
     const text = document.createElementNS(ns, 'text');
     text.setAttribute('x', '180'); text.setAttribute('y', '88'); text.setAttribute('text-anchor', 'middle');
     text.textContent = 'cute life'; svg.append(text); heading.append(svg);
-    const subtitle = node('p', 'welcome-subtitle', "a cosy little game based on Conway's Game of Life");
+    const subtitle = node('p', 'welcome-subtitle', t.welcome.subtitle);
     subtitle.id = 'welcome-copy';
-    const play = node('p', 'welcome-playline', 'draw cells ~ watch them live ~ meet creatures ~ battle a friend');
+    const play = node('p', 'welcome-playline', t.welcome.playline);
     const cast = node('div', 'welcome-cast');
     WELCOME_MOODS.forEach(({ label }, index) => {
       const character = node('figure', `welcome-character welcome-character-${index}`);
@@ -183,17 +184,17 @@ export class WelcomeShow {
       try {
         const canvas = welcomeCreature(this.presentation.renderer, id);
         canvas.setAttribute('aria-hidden', 'true');
-        character.append(canvas, node('figcaption', '', id === 'lwss' ? 'a little traveller' : id === 'blinker' ? 'a little dancer' : 'a little explorer'));
+        character.append(canvas, node('figcaption', '', id === 'lwss' ? t.welcome.traveller : id === 'blinker' ? t.welcome.dancer : t.welcome.explorer));
         creatures.append(character);
       } catch {
         // Some canvas/GPU implementations cannot extract. The real scene still shows the cast.
-        creatures.replaceChildren(node('p', 'welcome-live-cast', 'meet the creatures swimming behind the title ~'));
+        creatures.replaceChildren(node('p', 'welcome-live-cast', t.welcome.liveCast));
         break;
       }
     }
-    const copy = node('p', 'welcome-sound-note', 'with sound ~');
-    const begin = this.action('▶ tap to begin', () => this.begin(), 'welcome-begin');
-    const skip = this.action('skip', () => this.finish(), 'welcome-skip');
+    const copy = node('p', 'welcome-sound-note', t.welcome.withSound);
+    const begin = this.action(t.welcome.begin, () => this.begin(), 'welcome-begin');
+    const skip = this.action(WELCOME_CARD.skip, () => this.finish(), 'welcome-skip');
     this.note.replaceChildren(creatures, heading, subtitle, play, cast, begin, copy, skip);
     begin.focus({ preventScroll: true });
     begin.addEventListener('pointerenter', () => this.buffer());
@@ -234,9 +235,9 @@ export class WelcomeShow {
     video.hidden = false;
     this.overlay?.classList.add('welcome-playing');
     const skip = this.action(WELCOME_CARD.skip, () => this.finish(), 'welcome-skip');
-    const caption = node('h2', 'welcome-video-description', 'welcome to cute life ~');
+    const caption = node('h2', 'welcome-video-description', WELCOME_LINES[0]);
     caption.id = 'welcome-title';
-    const description = node('p', 'welcome-video-description', 'a tiny world where cells are born, live and dance');
+    const description = node('p', 'welcome-video-description', WELCOME_LINES[1]);
     description.id = 'welcome-copy';
     this.note.replaceChildren(caption, description, skip);
     skip.focus({ preventScroll: true });

@@ -1,4 +1,5 @@
 import type { Mood } from '../render/cellArt';
+import { t } from '../i18n';
 import { WorldView } from '../render/world';
 import { pokeLine, randomTip } from './cellTips';
 import { pokeCell, settleCell, sleepingCell } from './cornerCellState';
@@ -69,7 +70,7 @@ export function attachCornerCells(title: HTMLElement, sleepers: HTMLElement[], a
       }
     }
 
-    interactive(element, 'wake sleeping cell', () => {
+    interactive(element, t.corner.wake, () => {
       clearTimeout(timer);
       state = pokeCell(state, performance.now());
       if (state.pokes === 1) {
@@ -93,7 +94,7 @@ export function attachCornerCells(title: HTMLElement, sleepers: HTMLElement[], a
   const originalIcon = icon.src;
   let helpTimer = 0;
   let openingHelp = false;
-  interactive(title, 'help', () => {
+  interactive(title, t.corner.help, () => {
     if (openingHelp) return;
     openingHelp = true;
     icon.src = portrait('blink', 0);

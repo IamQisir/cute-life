@@ -2,8 +2,10 @@
 import '@fontsource/caveat/500.css';
 import '@fontsource/caveat/700.css';
 import '@fontsource/patrick-hand/400.css';
+import './i18n/fonts';
 import { Application, Graphics, UPDATE_PRIORITY } from 'pixi.js';
 import { MusicBox } from './audio/musicBox';
+import { lang, saveLang, t } from './i18n';
 import { fromChallengeHash, fromReplayHash } from './battle/challenge';
 import { BattleMode, type Opponent } from './battle/mode';
 import { attachInput } from './input';
@@ -48,7 +50,6 @@ const RESULT_HOLD_MS = 2000;
 const MANUAL_CAMERA_GRACE_MS = 400;
 /** Links longer than this still work, but some apps truncate them. */
 const LONG_LINK = 8000;
-const POST_TEXT = 'my little cells are growing 🌱 #cutelife #GameOfLife';
 
 async function main() {
   const stage = document.getElementById('stage')!;
@@ -112,6 +113,14 @@ async function main() {
   };
 
   const hud = new Hud(document.getElementById('hud')!, {
+    async setLanguage(next) {
+      if (next === lang) return;
+      saveLang(next);
+      // Carry the sandbox scene across the reload as a share link.
+      const url = mode === 'sandbox' && sim.population ? await shareLink() : location.pathname + location.search;
+      history.replaceState(null, '', url);
+      location.reload();
+    },
     wakeCell(index) {
       if (audio.mode !== 'all') return;
       audio.unlock();
@@ -161,11 +170,11 @@ async function main() {
     },
     toggleSelect() {
       setSelecting(!selecting);
-      if (selecting) hud.toast('drag a box to save a stamp ~ settings → select turns it off');
+      if (selecting) hud.toast(t.toast.selectOn);
     },
     pickPattern(p) {
       selectPattern(p);
-      if (p) hud.toast('click to place ~ R rotates ~ F flips ~ shift+click keeps stamping');
+      if (p) hud.toast(t.toast.picked);
     },
   });
 
@@ -211,10 +220,10 @@ async function main() {
     refreshStatus();
     if (sim.population > POPULATION_CAP) {
       setPlaying(false);
-      hud.toast("whew, it's getting crowded in here! (paused)", 4000);
+      hud.toast(t.toast.crowded, 4000);
     } else if (sim.population === 0 && playing) {
       setPlaying(false);
-      hud.toast('everyone drifted off... draw some new friends?', 4000);
+      hud.toast(t.toast.extinct, 4000);
     }
   }
 
@@ -279,8 +288,8 @@ async function main() {
     const pts = stampPoints(x, y);
     if (mode === 'battle') {
       const problem = battle.placeStamp(pts, performance.now());
-      if (problem === 'zone') hud.toast('keep it inside your zone ~');
-      else if (problem === 'budget') hud.toast('not enough cells left for that one');
+      if (problem === 'zone') hud.toast(t.toast.zone);
+      else if (problem === 'budget') hud.toast(t.toast.budget);
       else audio.pop(x, y);
     } else {
       const now = performance.now();
@@ -336,7 +345,9 @@ async function main() {
   function drawWatermark(ctx: CanvasRenderingContext2D, w: number, h: number) {
     const size = Math.max(18, Math.round(h * 0.045));
     ctx.save();
-    ctx.font = `700 ${size}px Caveat, cursive`;
+    // The title stack also names this language's handwriting font (see style.css).
+    const family = getComputedStyle(document.documentElement).getPropertyValue('--font-title');
+    ctx.font = `700 ${size}px ${family}`;
     ctx.textBaseline = 'alphabetic';
     const pad = size * 0.6;
     const label = 'cute life';
@@ -346,12 +357,12 @@ async function main() {
     ctx.drawImage(icon, w - pad - tw - iconSize * 0.95, h - pad - iconSize * 0.8, iconSize, iconSize);
     ctx.fillStyle = '#c4483a';
     ctx.fillText(label, w - pad - tw, h - pad);
-    ctx.font = `500 ${Math.round(size * 0.8)}px Caveat, cursive`;
+    ctx.font = `500 ${Math.round(size * 0.8)}px ${family}`;
     ctx.fillStyle = '#7a6a5c';
     const status =
       mode === 'battle'
-        ? `${battle.cfg.garden ? 'flowers' : 'territory'} red ${battle.sim.points.red} · blue ${battle.sim.points.blue} · generation ${battle.sim.generation}`
-        : `generation ${sim.generation} · ${sim.population} cells`;
+        ? t.watermark.battle(battle.cfg.garden !== undefined, battle.sim.points.red, battle.sim.points.blue, battle.sim.generation)
+        : t.watermark.sandbox(sim.generation, sim.population);
     ctx.fillText(status, pad, h - pad);
     ctx.restore();
   }
@@ -381,11 +392,11 @@ async function main() {
 
   function copyLink() {
     if (sim.population === 0) {
-      hud.toast('draw some cells first, then share them!');
+      hud.toast(t.toast.shareEmpty);
       return;
     }
     return copyText(shareLink(), (link) =>
-      link.length > LONG_LINK ? 'link copied! (it is a big one)' : 'link copied ~ paste it anywhere!');
+      link.length > LONG_LINK ? t.toast.linkCopiedBig : t.toast.linkCopied);
   }
 
   async function onRecorded(r: Recording) {
@@ -401,7 +412,7 @@ async function main() {
     clipUrl = URL.createObjectURL(r.blob);
     // Prepare the URL before showing the result so its post button opens synchronously.
     const battleLink = mode === 'battle' ? battle.replayLink() : null;
-    const text = battleLink ? resultText() : POST_TEXT;
+    const text = battleLink ? resultText() : t.post.sandbox;
     const url = battleLink ?? (sim.population ? await shareLink() : location.origin + location.pathname);
     hud.showResult(clipUrl, r.ext, {
       download() {
@@ -427,7 +438,7 @@ async function main() {
     audio.unlock();
     hud.closeResult();
     if (!recorder.start(onRecorded)) {
-      hud.toast("sorry, this browser can't record video");
+      hud.toast(t.toast.noRecording);
       return;
     }
     if (mode === 'sandbox') {
@@ -466,7 +477,7 @@ async function main() {
       await navigator.clipboard.writeText(await pendingText);
       await done();
     } catch {
-      window.prompt('copy this link:', await pendingText);
+      window.prompt(t.toast.copyPrompt, await pendingText);
     }
   }
 
@@ -506,7 +517,7 @@ async function main() {
     setSize: (size) => battle.setSize(size, performance.now()),
     challenge(name) {
       const link = battle.challengeLink(name.trim() || undefined);
-      if (link) copyText(link, 'challenge link copied! send it to a friend ~');
+      if (link) copyText(link, t.toast.challengeCopied);
     },
     editArmy: () => battle.editArmy(performance.now()),
     replay: () => battle.replay(performance.now()),
@@ -539,15 +550,15 @@ async function main() {
     const o = battle.outcome;
     const opp = battle.opponent;
     const score = o ? ` ${o.red} : ${o.blue}` : '';
-    if (o?.youWon && opp.kind === 'ai') return `my cell army beat the ${'★'.repeat(opp.stars)} AI${score} 🦠 #cutelife`;
-    if (o?.youWon && opp.kind === 'challenge') return `I beat ${opp.name || 'a friend'}'s cell army${score} 🦠 #cutelife`;
-    return `watch these cell armies fight${score} 🦠 #cutelife`;
+    if (o?.youWon && opp.kind === 'ai') return t.post.beatAi('★'.repeat(opp.stars), score);
+    if (o?.youWon && opp.kind === 'challenge') return t.post.beatFriend(opp.name ?? '', score);
+    return t.post.watch(score);
   }
 
   function shareReplay() {
     const link = battle.replayLink();
-    if (link) copyText(link, 'replay link copied ~ anyone can watch this battle!');
-    else hud.toast('finish a battle first, then share the replay!');
+    if (link) copyText(link, t.toast.replayCopied);
+    else hud.toast(t.toast.replayFirst);
   }
 
   /** Frame the arena between the battle title and the bottom controls. */
@@ -605,7 +616,7 @@ async function main() {
     if (recorder.recording) return;
     audio.unlock();
     if (!recorder.start(onRecorded)) {
-      hud.toast("sorry, this browser can't record video");
+      hud.toast(t.toast.noRecording);
       return;
     }
     // The whole battle in one clip, slowing down for the last generations.
@@ -659,11 +670,11 @@ async function main() {
       cards: cardDrag,
       share(id) {
         const s = library.list().find((c) => c.id === id);
-        if (s) copyText(location.origin + location.pathname + toStampHash(s.name, s.rows), `link to "${s.name}" copied ~`);
+        if (s) copyText(location.origin + location.pathname + toStampHash(s.name, s.rows), t.toast.stampLinkCopied(s.name));
       },
       remove(id) {
         const s = library.list().find((c) => c.id === id);
-        if (!s || !window.confirm(`delete the stamp "${s.name}"?`)) return;
+        if (!s || !window.confirm(t.toast.deleteStamp(s.name))) return;
         if (pattern === stampPatterns.get(id)) selectPattern(null);
         library.remove(id);
         stampPatterns.delete(id);
@@ -678,21 +689,17 @@ async function main() {
   function addStamp(name: string, rows: string[]): string | null {
     const res = library.add(name, rows);
     if ('error' in res) {
-      return res.error === 'full'
-        ? 'your stamp book is full (48): delete one first'
-        : res.error === 'too-big'
-          ? 'too big for a stamp (max 400 cells, 64×64)'
-          : 'there are no cells in it';
+      return res.error === 'full' ? t.toast.stampsFull : res.error === 'too-big' ? t.toast.stampTooBig : t.toast.stampEmpty;
     }
     refreshStamps();
-    hud.toast(res.duplicate ? `you already have that one: "${res.pattern.name}"` : `added "${res.pattern.name}" to my stamps`);
+    hud.toast(res.duplicate ? t.toast.stampDuplicate(res.pattern.name) : t.toast.stampAdded(res.pattern.name));
     return null;
   }
 
   function importStamp(text: string, name: string): string | null {
-    const t = text.trim();
-    const parsed = t.includes('stamp=') ? fromStampHash(t.slice(t.indexOf('#'))) : patternFromRle(t, name);
-    if (!parsed) return "couldn't read that: paste RLE or a stamp link";
+    const trimmed = text.trim();
+    const parsed = trimmed.includes('stamp=') ? fromStampHash(trimmed.slice(trimmed.indexOf('#'))) : patternFromRle(trimmed, name);
+    if (!parsed) return t.toast.stampUnreadable;
     return addStamp(name.trim() || parsed.name, parsed.rows);
   }
 
@@ -704,15 +711,15 @@ async function main() {
     save(name) {
       const rows = rowsFromPoints(selectedPoints());
       if (!rows) {
-        hud.toast(selectedPoints().length ? 'too big for a stamp (max 400 cells, 64×64)' : 'there are no cells in the box');
+        hud.toast(selectedPoints().length ? t.toast.stampTooBig : t.toast.boxEmpty);
         return;
       }
       if (addStamp(name, rows) === null) setSelecting(false);
     },
     copyRle(name) {
       const rows = rowsFromPoints(selectedPoints());
-      if (rows) copyText(patternToRle(rows, cleanName(name) || undefined), 'RLE copied ~');
-      else hud.toast('there are no cells in the box');
+      if (rows) copyText(patternToRle(rows, cleanName(name) || undefined), t.toast.rleCopied);
+      else hud.toast(t.toast.boxEmpty);
     },
     close: () => clearSelection(),
   });
@@ -926,7 +933,7 @@ async function main() {
       setFollowing(false);
       if (!followHinted) {
         followHinted = true;
-        hud.toast('camera is yours now ~ press follow to let it track the cells again');
+        hud.toast(t.toast.cameraYours);
       }
     },
   });
@@ -1035,7 +1042,7 @@ async function main() {
   refreshStamps();
   // A stamp link offers to add the stamp to "my stamps".
   if (offered) {
-    const p: Pattern = { name: offered.name || 'shared stamp', rows: offered.rows };
+    const p: Pattern = { name: offered.name || t.toast.sharedStamp, rows: offered.rows };
     openStampOffer(p, stampCell, () => addStamp(p.name, p.rows), () => {});
     forgetSharedLink();
   }
@@ -1043,7 +1050,7 @@ async function main() {
   // Challenge and replay links open straight into a battle.
   if (challenge) {
     enterBattle({ kind: 'challenge', army: challenge.army, name: challenge.name, size: challenge.size ?? 'small', rules: challenge.rules ?? 'garden' });
-    hud.toast(`${challenge.name || 'someone'} challenged you! deploy your blue army ~`, 5000);
+    hud.toast(t.toast.challenged(challenge.name ?? ''), 5000);
   } else if (replayLink) {
     enterBattle({ kind: 'replay', red: replayLink.red, blue: replayLink.blue, size: replayLink.size ?? 'small', rules: replayLink.rules ?? 'garden' });
   }

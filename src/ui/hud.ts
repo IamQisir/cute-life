@@ -10,6 +10,7 @@ import { MODES, type Mode, type PlayableMode } from './modes';
 import { icon, type IconName } from './icons';
 import { activeToolLabel, SETTINGS_ITEMS, soundState, TOOLBAR_ITEMS } from './toolbar';
 import { Popover } from './popover';
+import { LANG_NAMES, LANGS, lang, type Lang, t } from '../i18n';
 
 /** Sections open until the player decides otherwise: the most fun to try first. */
 const OPEN_BY_DEFAULT = new Set<Category>(['spaceship', 'gun', 'oscillator']);
@@ -34,6 +35,7 @@ export interface HudActions {
   cardDrag: CardHandlers;
   toggleSelect(): void;
   toggleFollow(): void;
+  setLanguage(lang: Lang): void;
 }
 
 export interface ResultActions {
@@ -115,30 +117,30 @@ export class Hud {
   constructor(root: HTMLElement, a: HudActions) {
     this.root = root;
     const title = el('div', 'title');
-    const icon = el('img');
-    icon.src = WorldView.portrait('happy', 0).toDataURL();
-    icon.alt = '';
-    title.append(icon, el('span', '', 'cute'), el('span', '', 'life'));
+    const logo = el('img');
+    logo.src = WorldView.portrait('happy', 0).toDataURL();
+    logo.alt = '';
+    title.append(logo, el('span', '', 'cute'), el('span', '', 'life'));
 
     const topRight = el('div', 'top-right');
-    this.soundBtn = toolbarButton('sound', 'soundAll', 'sound on', a.toggleSound);
-    this.handBtn = toolbarButton('move', 'move', 'move', () => {
+    this.soundBtn = toolbarButton('sound', 'soundAll', t.sound.all, a.toggleSound);
+    this.handBtn = toolbarButton('move', 'move', t.toolbar.move, () => {
       a.toggleHand();
       this.settingsPopover.close(true);
     }, 'sandbox-only');
-    this.selectBtn = toolbarButton('select', 'select', 'select', () => {
+    this.selectBtn = toolbarButton('select', 'select', t.toolbar.select, () => {
       a.toggleSelect();
       this.settingsPopover.close(true);
     }, 'sandbox-only');
-    this.followBtn = toolbarButton('follow', 'follow', 'follow', a.toggleFollow);
-    this.recordBtn = toolbarButton('record', 'record', 'record', a.toggleRecord, 'rec');
-    const shareBtn = toolbarButton('share', 'share', 'share', a.share);
-    this.modeBtn = toolbarButton('mode', 'sandbox', 'sandbox');
-    this.settingsBtn = toolbarButton('settings', 'settings', 'settings');
+    this.followBtn = toolbarButton('follow', 'follow', t.toolbar.follow, a.toggleFollow);
+    this.recordBtn = toolbarButton('record', 'record', t.toolbar.record, a.toggleRecord, 'rec');
+    const shareBtn = toolbarButton('share', 'share', t.toolbar.share, a.share);
+    this.modeBtn = toolbarButton('mode', 'sandbox', t.toolbar.sandbox);
+    this.settingsBtn = toolbarButton('settings', 'settings', t.toolbar.settings);
     this.modeMenu.id = 'mode-menu';
-    this.modeMenu.setAttribute('aria-label', 'choose a mode');
+    this.modeMenu.setAttribute('aria-label', t.toolbar.chooseMode);
     this.settingsMenu.id = 'settings-menu';
-    this.settingsMenu.setAttribute('aria-label', 'settings');
+    this.settingsMenu.setAttribute('aria-label', t.toolbar.settings);
     const settings = { sound: this.soundBtn, select: this.selectBtn, move: this.handBtn };
     for (const id of SETTINGS_ITEMS) {
       const item = settings[id];
@@ -146,6 +148,25 @@ export class Hud {
       if (id !== 'sound') item.setAttribute('aria-checked', 'false');
       this.settingsMenu.append(item);
     }
+    // Switching reloads the page, so these are plain items marked with aria-current.
+    const langRow = el('div', 'lang-row');
+    langRow.setAttribute('role', 'group');
+    langRow.setAttribute('aria-label', t.toolbar.language);
+    langRow.append(icon('language'));
+    for (const option of LANGS) {
+      const pick = el('button', `btn lang-btn${option === lang ? ' on' : ''}`, LANG_NAMES[option]);
+      pick.type = 'button';
+      pick.lang = option;
+      pick.setAttribute('role', 'menuitem');
+      if (option === lang) pick.setAttribute('aria-current', 'true');
+      pick.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.settingsPopover.close(true);
+        a.setLanguage(option);
+      });
+      langRow.append(pick);
+    }
+    this.settingsMenu.append(langRow);
     for (const option of MODES) {
       const card = el('button', 'mode-card');
       card.type = 'button';
@@ -176,7 +197,7 @@ export class Hud {
       }
       const copy = el('span', 'mode-copy');
       copy.append(el('span', 'mode-name', option.name), el('span', 'mode-description', option.description));
-      if (option.disabled) copy.append(el('span', 'mode-soon', 'coming soon'));
+      if (option.disabled) copy.append(el('span', 'mode-soon', t.modes.soon));
       card.append(preview, copy);
       card.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -191,7 +212,7 @@ export class Hud {
     this.settingsPopover = new Popover(this.settingsBtn, this.settingsMenu, () => this.modePopover.close());
     const toolbar = { mode: this.modeBtn, record: this.recordBtn, share: shareBtn, follow: this.followBtn, settings: this.settingsBtn };
     topRight.append(...TOOLBAR_ITEMS.map((id) => toolbar[id]));
-    const helpBtn = toolbarButton('help', 'help', 'help', a.openHelp);
+    const helpBtn = toolbarButton('help', 'help', t.toolbar.help, a.openHelp);
     helpBtn.addEventListener('keydown', (e) => e.stopPropagation());
     helpBtn.addEventListener('keyup', (e) => e.stopPropagation());
     topRight.insertBefore(helpBtn, this.settingsBtn);
@@ -206,8 +227,8 @@ export class Hud {
     palette.classList.toggle('collapsed', isPaletteHidden());
     // The "stamps" title itself folds the whole palette (arrow like the sections).
     const top = el('button', 'pal-top');
-    top.append(el('span', 'pal-arrow', '▸'), el('span', 'label', 'stamps'));
-    top.title = 'show / hide stamps';
+    top.append(el('span', 'pal-arrow', '▸'), el('span', 'label', t.palette.stamps));
+    top.title = t.palette.toggle;
     top.addEventListener('click', (e) => {
       e.stopPropagation();
       top.blur();
@@ -217,15 +238,15 @@ export class Hud {
     });
     this.stampControls.hidden = true;
     this.stampControls.setAttribute('role', 'group');
-    this.stampControls.setAttribute('aria-label', 'orient held stamp');
+    this.stampControls.setAttribute('aria-label', t.palette.orient);
     this.stampControls.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.stampControls.append(
-      toolbarButton('rotate', 'rotate', 'rotate', a.rotateStamp),
-      toolbarButton('flip', 'flip', 'flip', a.flipStamp),
+      toolbarButton('rotate', 'rotate', t.toolbar.rotate, a.rotateStamp),
+      toolbarButton('flip', 'flip', t.toolbar.flip, a.flipStamp),
     );
     const [rotate, flip] = this.stampControls.querySelectorAll('button');
-    decorate(rotate, 'rotate', 'rotate', 'rotate (R)');
-    decorate(flip, 'flip', 'flip', 'flip (F)');
+    decorate(rotate, 'rotate', t.toolbar.rotate, t.toolbar.rotateTitle);
+    decorate(flip, 'flip', t.toolbar.flip, t.toolbar.flipTitle);
     palette.append(this.stampControls, top);
     const cell = WorldView.portrait('happy', 0);
     for (const group of byCategory()) {
@@ -233,7 +254,7 @@ export class Hud {
         const card = patternCard(p, cell, {
           ...a.cardDrag,
           pick: () => a.pickPattern(card.classList.contains('on') ? null : p),
-        }, true, `${p.fullName}: ${p.blurb}`);
+        }, true, t.palette.cardTitle(p.label, p.fullName, p.blurb), p.label);
         this.cards.set(p, card);
         return card;
       });
@@ -243,7 +264,7 @@ export class Hud {
 
     const bottom = el('div', 'bottom');
     const controls = el('div', 'controls');
-    this.playBtn = button('play', a.togglePlay, 'big');
+    this.playBtn = button(t.controls.play, a.togglePlay, 'big');
     const speed = el('label', 'speed');
     const slider = el('input');
     slider.type = 'range';
@@ -251,11 +272,11 @@ export class Hud {
     slider.max = '20';
     slider.value = '4';
     slider.addEventListener('input', () => a.setSpeed(Number(slider.value)));
-    speed.append(el('span', '', 'slow'), slider, el('span', '', 'fast'));
-    controls.append(this.playBtn, button('step', a.step), speed, button('sprinkle', a.shuffle), button('clear', a.clear));
+    speed.append(el('span', '', t.controls.slow), slider, el('span', '', t.controls.fast));
+    controls.append(this.playBtn, button(t.controls.step, a.step), speed, button(t.controls.sprinkle, a.shuffle), button(t.controls.clear, a.clear));
     bottom.append(this.status, controls);
 
-    this.hint.textContent = 'click to draw a little cell ~ space to play\nscroll to zoom ~ right-drag (or hold space) to move';
+    this.hint.textContent = t.controls.hint;
 
     const sleepers = ['bl', 'br'].map((side, i) => {
       const s = el('div', `sleeper ${side}`);
@@ -276,13 +297,13 @@ export class Hud {
   }
 
   setStatus(generation: number, population: number) {
-    this.status.replaceChildren(document.createTextNode('generation '), el('b', '', String(generation)),
-      document.createTextNode(' · '), el('b', '', String(population)),
-      document.createTextNode(` ${population === 1 ? 'cell' : 'cells'}`));
+    // Segments alternate plain text and bold numbers.
+    this.status.replaceChildren(...t.controls.status(generation, population)
+      .map((text, i) => (i % 2 ? el('b', '', text) : document.createTextNode(text))));
   }
 
   setPlaying(on: boolean) {
-    this.playBtn.textContent = on ? 'pause' : 'play';
+    this.playBtn.textContent = on ? t.controls.pause : t.controls.play;
   }
 
   setSound(mode: SoundMode) {
@@ -295,7 +316,7 @@ export class Hud {
     this.moving = on;
     this.handBtn.classList.toggle('on', on);
     this.handBtn.setAttribute('aria-checked', String(on));
-    decorate(this.handBtn, 'move', 'move', `move tool ${on ? 'on' : 'off'} · H`);
+    decorate(this.handBtn, 'move', t.toolbar.move, t.toolbar.moveTitle(on));
     this.updateSettingsBadge();
   }
 
@@ -308,7 +329,7 @@ export class Hud {
   setFollow(on: boolean) {
     this.followBtn.classList.toggle('on', on);
     this.followBtn.setAttribute('aria-pressed', String(on));
-    decorate(this.followBtn, 'follow', 'follow', `follow camera ${on ? 'on' : 'off'}`);
+    decorate(this.followBtn, 'follow', t.toolbar.follow, t.toolbar.followTitle(on));
   }
 
   /** Battle deployment: grey out stamps that don't fit the cells left (null = no limit). */
@@ -327,7 +348,7 @@ export class Hud {
     this.selecting = on;
     this.selectBtn.classList.toggle('on', on);
     this.selectBtn.setAttribute('aria-checked', String(on));
-    decorate(this.selectBtn, 'select', 'select', `select tool ${on ? 'on' : 'off'}`);
+    decorate(this.selectBtn, 'select', t.toolbar.select, t.toolbar.selectTitle(on));
     this.updateSettingsBadge();
   }
 
@@ -335,7 +356,7 @@ export class Hud {
   setStamps(entries: StampEntry[], a: StampSectionActions) {
     const cell = WorldView.portrait('happy', 0);
     const { nodes, cards } = stampSection(entries, cell, a, true, false);
-    this.customArea.replaceChildren(paletteSection('mine', 'my stamps', entries.length, nodes, true));
+    this.customArea.replaceChildren(paletteSection('mine', t.palette.myStamps, entries.length, nodes, true));
     this.customCards = cards;
     this.setPattern(this.picked);
   }
@@ -346,7 +367,7 @@ export class Hud {
     this.root.classList.toggle('battle', mode === 'battle');
     this.mode = mode;
     const name = MODES.find((option) => option.id === mode)!.name;
-    decorate(this.modeBtn, mode, name, `mode: ${name}`);
+    decorate(this.modeBtn, mode, name, t.toolbar.modeTitle(name));
     for (const [id, card] of this.modeCards) card.setAttribute('aria-checked', String(id === mode));
     this.modePopover.close();
     this.settingsPopover.close();
@@ -357,7 +378,7 @@ export class Hud {
     const tools = activeToolLabel(this.selecting, this.moving, this.mode);
     this.settingsBtn.classList.toggle('on', !!tools);
     this.settingsBtn.classList.toggle('has-active-tool', !!tools);
-    const label = tools ? `settings · ${tools} tool active` : 'settings';
+    const label = tools ? t.toolbar.settingsActive(tools) : t.toolbar.settings;
     this.settingsBtn.title = label;
     this.settingsBtn.setAttribute('aria-label', label);
   }
@@ -365,8 +386,8 @@ export class Hud {
   /** Seconds elapsed while recording, or null when idle. */
   setRecording(seconds: number | null, max: number) {
     this.recordBtn.classList.toggle('live', seconds !== null);
-    const label = seconds === null ? 'record' : `stop ${Math.floor(seconds)}s / ${max}s`;
-    decorate(this.recordBtn, 'record', label, seconds === null ? 'record video' : `${label} · recording video`);
+    const label = seconds === null ? t.toolbar.record : t.toolbar.recordStop(Math.floor(seconds), max);
+    decorate(this.recordBtn, 'record', label, seconds === null ? t.toolbar.recordTitle : t.toolbar.recording(label));
     this.recordBtn.setAttribute('aria-pressed', String(seconds !== null));
   }
 
@@ -380,17 +401,15 @@ export class Hud {
     video.autoplay = video.loop = video.muted = video.playsInline = true;
     video.controls = true;
     const note = el('div', 'modal-note',
-      ext === 'mp4'
-        ? 'your clip is ready! save it, then attach it to your post ~'
-        : 'saved as WebM; X only takes MP4, so try Chrome or Safari for posting');
+      ext === 'mp4' ? t.result.mp4 : t.result.webm);
     const row = el('div', 'controls');
     row.append(
-      button('save video', a.download, 'big'),
-      button('copy link', a.copyLink),
-      button('post on X', a.post),
-      button('close', () => this.closeResult()),
+      button(t.result.save, a.download, 'big'),
+      button(t.result.copyLink, a.copyLink),
+      button(t.result.post, a.post),
+      button(t.result.close, () => this.closeResult()),
     );
-    card.append(el('div', 'modal-title', 'look what grew!'), video, note, row);
+    card.append(el('div', 'modal-title', t.result.title), video, note, row);
     back.append(card);
     back.addEventListener('pointerdown', (e) => e.target === back && this.closeResult());
     document.body.append(back);

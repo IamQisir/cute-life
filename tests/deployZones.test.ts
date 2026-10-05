@@ -124,7 +124,7 @@ describe('AI deployment shape', () => {
     const g = cfg.garden!;
     const [redLast, blueFirst] = columns[size];
     for (const team of [RED, BLUE] as const) for (const stars of [1, 2, 3, 4, 5] as const) {
-      const army = chooseDeployment(cfg, team, stars, 314);
+      const army = chooseDeployment(cfg, team, stars, 314, 1500);
       expect(army).toHaveLength(cfg.budget);
       expect(validateDeployment(cfg, team, army)).toEqual({ ok: true });
       for (const [x, y] of army) {

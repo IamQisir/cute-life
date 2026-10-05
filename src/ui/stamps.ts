@@ -2,6 +2,7 @@
 // dialog, the "add this stamp?" offer for stamp links, and the "my stamps"
 // palette section. Names are always rendered with textContent.
 
+import { t } from '../i18n';
 import { type Pattern, cellCount } from '../life/patterns';
 import { type CardHandlers, patternCard, patternThumb } from './patternCard';
 
@@ -51,7 +52,7 @@ export class SelectionMenu {
   private name = el('input', 'name-input');
 
   constructor(parent: HTMLElement, a: SelectionActions) {
-    this.name.placeholder = 'name your stamp';
+    this.name.placeholder = t.stamps.namePlaceholder;
     this.name.maxLength = 24;
     this.name.addEventListener('keydown', (e) => {
       e.stopPropagation(); // typing must not trigger game shortcuts
@@ -60,8 +61,8 @@ export class SelectionMenu {
     });
     const row = el('div', 'controls');
     row.append(
-      button('save stamp', () => a.save(this.name.value), 'big'),
-      button('copy RLE', () => a.copyRle(this.name.value)),
+      button(t.stamps.save, () => a.save(this.name.value), 'big'),
+      button(t.stamps.copyRle, () => a.copyRle(this.name.value)),
       button('×', a.close),
     );
     this.root.append(this.count, this.name, row);
@@ -71,7 +72,7 @@ export class SelectionMenu {
 
   /** Show at a screen position with the number of selected cells. */
   show(x: number, y: number, cells: number) {
-    this.count.textContent = cells ? `${cells} ${cells === 1 ? 'cell' : 'cells'} selected` : 'no cells in the box';
+    this.count.textContent = t.stamps.selected(cells);
     this.root.style.display = '';
     const w = this.root.offsetWidth;
     const h = this.root.offsetHeight;
@@ -102,20 +103,20 @@ export class SelectionMenu {
 /** Paste RLE or a stamp link. `add` returns an error message, or null on success. */
 export function openImportDialog(add: (text: string, name: string) => string | null) {
   const text = el('textarea', 'import-text');
-  text.placeholder = 'paste RLE (e.g. from LifeWiki) or a stamp link';
+  text.placeholder = t.stamps.importPlaceholder;
   text.rows = 6;
   const name = el('input', 'name-input');
-  name.placeholder = 'name (optional)';
+  name.placeholder = t.stamps.optionalName;
   name.maxLength = 24;
   const error = el('div', 'modal-note');
   for (const input of [text, name]) input.addEventListener('keydown', (e) => e.stopPropagation());
-  const close = modal('import a stamp', [text, name, error], [
-    button('add', () => {
+  const close = modal(t.stamps.importTitle, [text, name, error], [
+    button(t.stamps.add, () => {
       const problem = add(text.value, name.value);
       if (problem) error.textContent = problem;
       else close();
     }, 'big'),
-    button('cancel', () => close()),
+    button(t.stamps.cancel, () => close()),
   ]);
   text.focus();
 }
@@ -125,13 +126,13 @@ export function openStampOffer(p: Pattern, cell: HTMLCanvasElement, add: () => v
   const preview = patternThumb(p, cell, 120);
   preview.classList.add('stamp-preview');
   const label = el('div', 'modal-note');
-  label.textContent = `"${p.name}" · ${cellCount(p)} cells`;
-  const close = modal('someone shared a stamp!', [preview, label], [
-    button('add to my stamps', () => {
+  label.textContent = t.stamps.offerLabel(p.name, cellCount(p));
+  const close = modal(t.stamps.offerTitle, [preview, label], [
+    button(t.stamps.addToMine, () => {
       add();
       close();
     }, 'big'),
-    button('no thanks', () => {
+    button(t.stamps.noThanks, () => {
       dismiss();
       close();
     }),
@@ -165,14 +166,14 @@ export function stampSection(
 ): { nodes: HTMLElement[]; cards: Map<Pattern, HTMLElement> } {
   const nodes: HTMLElement[] = [];
   const cards = new Map<Pattern, HTMLElement>();
-  if (withLabel && (entries.length || a.importStamp)) nodes.push(el('div', 'label', 'my stamps'));
+  if (withLabel && (entries.length || a.importStamp)) nodes.push(el('div', 'label', t.palette.myStamps));
   for (const { id, pattern } of entries) {
     const card = patternCard(pattern, cell, a.cards, showCost);
     card.classList.add('custom');
     const tools = el('div', 'card-tools');
     if (a.share) {
       const s = el('span', 'card-tool', '🔗');
-      s.title = 'copy a link to this stamp';
+      s.title = t.palette.copyStampLink;
       s.addEventListener('pointerdown', (e) => e.stopPropagation());
       s.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -182,7 +183,7 @@ export function stampSection(
     }
     if (a.remove) {
       const x = el('span', 'card-tool', '×');
-      x.title = 'delete this stamp';
+      x.title = t.palette.deleteStamp;
       x.addEventListener('pointerdown', (e) => e.stopPropagation());
       x.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -195,8 +196,8 @@ export function stampSection(
     nodes.push(card);
   }
   if (a.importStamp) {
-    const add = el('div', 'card import-card', '+ import');
-    add.title = 'paste RLE or a stamp link';
+    const add = el('div', 'card import-card', t.palette.import);
+    add.title = t.palette.importTitle;
     add.addEventListener('click', (e) => {
       e.stopPropagation();
       a.importStamp!();

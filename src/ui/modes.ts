@@ -1,8 +1,10 @@
+import { t } from '../i18n';
+
 /** Siege stays visible, but cannot be selected until it is ready to play. */
 export const MODES = [
-  { id: 'sandbox', name: 'sandbox', description: 'Draw cells and watch them grow.', disabled: false },
-  { id: 'battle', name: 'garden battle', description: 'Red vs blue: grow your garden.', disabled: false },
-  { id: 'siege', name: 'crystal siege', description: 'A new battle around a crystal.', disabled: true },
+  { id: 'sandbox', ...t.modes.sandbox, disabled: false },
+  { id: 'battle', ...t.modes.battle, disabled: false },
+  { id: 'siege', ...t.modes.siege, disabled: true },
 ] as const;
 
 export type Mode = typeof MODES[number]['id'];

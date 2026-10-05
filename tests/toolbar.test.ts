@@ -14,7 +14,7 @@ describe('top bar controls', () => {
   it('supplies sketch paths for every control, mode and sound state', () => {
     expect(Object.keys(ICONS)).toEqual([
       'sandbox', 'battle', 'record', 'share', 'follow', 'select', 'move',
-      'soundAll', 'soundMusic', 'soundOff', 'help', 'settings', 'rotate', 'flip',
+      'soundAll', 'soundMusic', 'soundOff', 'help', 'settings', 'rotate', 'flip', 'language',
     ]);
     for (const paths of Object.values(ICONS)) {
       expect(paths.length).toBeGreaterThan(0);

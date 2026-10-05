@@ -1,4 +1,5 @@
 import { Rectangle, type Renderer } from 'pixi.js';
+import { t } from '../i18n';
 import { Camera } from '../render/camera';
 import { drawBud, drawCell, PALETTES } from '../render/cellArt';
 import { OrganismView } from '../render/organisms';
@@ -6,10 +7,10 @@ import { Sim } from '../sim';
 import { welcomePattern } from './welcomePatterns';
 
 export const WELCOME_MOODS = [
-  { mood: 'happy', label: 'lives on', rule: '2 or 3 ~ lives on' },
-  { mood: 'lonely', label: 'lonely', rule: 'fewer than 2 ~ lonely' },
-  { mood: 'crowded', label: 'crowded', rule: 'more than 3 ~ crowded' },
-  { mood: 'born', label: 'a new cell is born', rule: 'empty + exactly 3 ~ born' },
+  { mood: 'happy', label: t.welcome.moods[0], rule: '2 or 3 ~ lives on' },
+  { mood: 'lonely', label: t.welcome.moods[1], rule: 'fewer than 2 ~ lonely' },
+  { mood: 'crowded', label: t.welcome.moods[2], rule: 'more than 3 ~ crowded' },
+  { mood: 'born', label: t.welcome.moods[3], rule: 'empty + exactly 3 ~ born' },
 ] as const;
 export function welcomeFace(index: number) {
   const mood = WELCOME_MOODS[index].mood;

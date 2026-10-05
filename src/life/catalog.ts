@@ -1,18 +1,19 @@
+import { t } from '../i18n';
+import { en } from '../i18n/en';
 import { decodeRle } from '../share/rle';
 import { patternFromRle } from './library';
 import { cellCount, type Pattern } from './patterns';
 
 export type Category = 'still' | 'oscillator' | 'spaceship' | 'methuselah' | 'gun' | 'puffer' | 'growth' | 'reflector';
 
-export const CATEGORY_LABELS: Record<Category, string> = {
-  still: 'still lifes', oscillator: 'oscillators', spaceship: 'spaceships',
-  methuselah: 'methuselahs', gun: 'guns', puffer: 'puffers & rakes',
-  growth: 'infinite growth', reflector: 'reflectors',
-};
+export const CATEGORY_LABELS: Record<Category, string> = t.categories;
 
 export interface CatalogEntry extends Pattern {
   id: string;
+  /** English name, stable across languages (identity, tests). */
   name: string;
+  /** Card name in the current language. */
+  label: string;
   fullName: string;
   author?: string;
   blurb: string;
@@ -22,67 +23,70 @@ export interface CatalogEntry extends Pattern {
   cells: number;
 }
 
-type Description = [id: string, name: string, category: Category, blurb: string, period?: number];
+type Description = [id: PatternId, category: Category, period?: number];
+type PatternId = keyof typeof en.patterns;
 
 // Explicit order keeps familiar, simple patterns first within each category.
 // Classify the supplied seeds: a lone switch engine is a methuselah,
 // the supported queen bee is an oscillator, and hivenudger is a spaceship.
 // Buckaroo is filed with reflectors; it also oscillates on its own.
 const DESCRIPTIONS: Description[] = [
-  ['block', 'block', 'still', 'a tiny square that stays put'],
-  ['beehive', 'beehive', 'still', 'a little hollow hexagon that stays put'],
-  ['loaf', 'loaf', 'still', 'a seven-cell loop that stays put'],
-  ['boat', 'boat', 'still', 'a five-cell boat that stays put'],
-  ['tub', 'tub', 'still', 'a four-cell diamond that stays put'],
-  ['pond', 'pond', 'still', 'an eight-cell ring that stays put'],
-  ['ship', 'ship', 'still', 'this little ship stays anchored'],
-  ['eater1', 'eater 1', 'still', 'a seven-cell still life'],
-  ['eater2', 'eater 2', 'still', 'a nineteen-cell still life'],
-  ['blinker', 'blinker', 'oscillator', 'three cells blink back and forth', 2],
-  ['toad', 'toad', 'oscillator', 'two rows trade places every two generations', 2],
-  ['beacon', 'beacon', 'oscillator', 'two corners blink every two generations', 2],
-  ['clock', 'clock', 'oscillator', 'a tiny clock with a two-generation tick', 2],
-  ['pulsar', 'pulsar', 'oscillator', 'a symmetric pulse every three generations', 3],
-  ['pentadecathlon', 'pentadecathlon', 'oscillator', 'a fifteen-generation dance', 15],
-  ['figureeight', 'figure eight', 'oscillator', 'two lobes dance through eight generations', 8],
-  ['koksgalaxy', "kok's galaxy", 'oscillator', 'a swirling eight-generation cycle', 8],
-  ['tumbler', 'tumbler', 'oscillator', 'tumbles in place every fourteen generations', 14],
-  ['queenbeeshuttle', 'queen bee', 'oscillator', 'a supported shuttle with a thirty-generation cycle', 30],
-  ['twinbeesshuttle', 'twin bees', 'oscillator', 'a supported shuttle with a forty-six-generation cycle', 46],
-  ['glider', 'glider', 'spaceship', 'slides diagonally one cell every four generations', 4],
-  ['lwss', 'lwss', 'spaceship', 'cruises two cells every four generations', 4],
-  ['mwss', 'mwss', 'spaceship', 'cruises two cells every four generations', 4],
-  ['hwss', 'hwss', 'spaceship', 'cruises two cells every four generations', 4],
-  ['copperhead', 'copperhead', 'spaceship', 'creeps one cell every ten generations', 10],
-  ['bigglider', 'big glider', 'spaceship', 'a larger diagonal traveler at one cell every four ticks', 4],
-  ['hivenudger', 'hivenudger', 'spaceship', 'carries its hive two cells every four generations', 4],
-  ['rpentomino', 'r-pentomino', 'methuselah', 'five cells grow into a long-lived adventure'],
-  ['acorn', 'acorn', 'methuselah', 'seven cells blossom into a busy world'],
-  ['diehard', 'diehard', 'methuselah', 'vanishes completely at generation 130'],
-  ['rabbits', 'rabbits', 'methuselah', 'nine cells start a sprawling adventure'],
-  ['piheptomino', 'pi-heptomino', 'methuselah', 'seven cells open into a lively cloud'],
-  ['switchengine', 'switch engine', 'methuselah', 'alone, this eight-cell engine eventually runs out'],
-  ['gosperglidergun', 'gosper gun', 'gun', 'fires a glider every thirty generations', 30],
-  ['simkinglidergun', 'simkin gun', 'gun', 'fires a glider every 120 generations', 120],
-  ['p46gun', 'p46 gun', 'gun', 'fires a glider every forty-six generations', 46],
-  ['newgun1', 'new gun 1', 'gun', 'another forty-six-generation glider factory', 46],
-  ['puffer1', 'puffer 1', 'puffer', 'moves at half speed, leaving a repeating wake', 128],
-  ['puffer2', 'puffer 2', 'puffer', 'moves at half speed with a 140-generation wake', 140],
-  ['spacerake', 'space rake', 'puffer', 'a half-speed traveler that sheds gliders', 20],
-  ['backrake1', 'backrake 1', 'puffer', 'a half-speed traveler that sheds gliders behind it', 8],
-  ['noahsark', "noah's ark", 'puffer', 'two engines leave a growing diagonal wake', 1344],
-  ['10cellinfinitegrowth', '10-cell growth', 'growth', 'ten cells seed a steadily growing wake'],
-  ['5x5infinitegrowth', '5x5 growth', 'growth', 'a tiny square seed grows a sprawling wake'],
+  ['block', 'still'],
+  ['beehive', 'still'],
+  ['loaf', 'still'],
+  ['boat', 'still'],
+  ['tub', 'still'],
+  ['pond', 'still'],
+  ['ship', 'still'],
+  ['eater1', 'still'],
+  ['eater2', 'still'],
+  ['blinker', 'oscillator', 2],
+  ['toad', 'oscillator', 2],
+  ['beacon', 'oscillator', 2],
+  ['clock', 'oscillator', 2],
+  ['pulsar', 'oscillator', 3],
+  ['pentadecathlon', 'oscillator', 15],
+  ['figureeight', 'oscillator', 8],
+  ['koksgalaxy', 'oscillator', 8],
+  ['tumbler', 'oscillator', 14],
+  ['queenbeeshuttle', 'oscillator', 30],
+  ['twinbeesshuttle', 'oscillator', 46],
+  ['glider', 'spaceship', 4],
+  ['lwss', 'spaceship', 4],
+  ['mwss', 'spaceship', 4],
+  ['hwss', 'spaceship', 4],
+  ['copperhead', 'spaceship', 10],
+  ['bigglider', 'spaceship', 4],
+  ['hivenudger', 'spaceship', 4],
+  ['rpentomino', 'methuselah'],
+  ['acorn', 'methuselah'],
+  ['diehard', 'methuselah'],
+  ['rabbits', 'methuselah'],
+  ['piheptomino', 'methuselah'],
+  ['switchengine', 'methuselah'],
+  ['gosperglidergun', 'gun', 30],
+  ['simkinglidergun', 'gun', 120],
+  ['p46gun', 'gun', 46],
+  ['newgun1', 'gun', 46],
+  ['puffer1', 'puffer', 128],
+  ['puffer2', 'puffer', 140],
+  ['spacerake', 'puffer', 20],
+  ['backrake1', 'puffer', 8],
+  ['noahsark', 'puffer', 1344],
+  ['10cellinfinitegrowth', 'growth'],
+  ['5x5infinitegrowth', 'growth'],
   // This RLE includes an incoming glider alongside the stable reflector.
-  ['snark', 'snark', 'reflector', 'a stable reflector shown with an incoming glider', 1],
-  ['buckaroo', 'buckaroo', 'reflector', 'a glider reflector with a thirty-generation heartbeat', 30],
+  ['snark', 'reflector', 1],
+  ['buckaroo', 'reflector', 30],
 ];
 
 const sources = import.meta.glob<string>('./catalog/*.rle', {
   query: '?raw', import: 'default', eager: true,
 });
 
-function load([id, name, category, blurb, period]: Description): CatalogEntry {
+function load([id, category, period]: Description): CatalogEntry {
+  const [name] = en.patterns[id];
+  const [label, localBlurb] = t.patterns[id];
   const text = sources[`./catalog/${id}.rle`];
   if (text === undefined) throw new Error(`Missing catalog pattern: ${id}`);
   const fullName = /^#N\s+([^\r\n]+)/m.exec(text)?.[1].trim();
@@ -105,7 +109,7 @@ function load([id, name, category, blurb, period]: Description): CatalogEntry {
     rows = grid.map((row) => row.join(''));
   }
   const pattern = { name, rows };
-  return { ...pattern, id, fullName, ...(author ? { author } : {}), blurb,
+  return { ...pattern, id, label, fullName, ...(author ? { author } : {}), blurb: localBlurb,
     category, ...(period === undefined ? {} : { period }), cells: cellCount(pattern) };
 }
 

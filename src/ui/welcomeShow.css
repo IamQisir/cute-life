@@ -15,7 +15,7 @@
   border-radius: var(--sketch-2); box-shadow: 4px 6px 0 rgba(0, 0, 0, 0.09);
   font-size: 23px; line-height: 1.25;
 }
-.welcome-title { margin: 0 0 8px; color: var(--red); font: 700 clamp(30px, 4vw, 46px)/1.1 'Caveat', cursive; animation: welcome-caption 450ms both; }
+.welcome-title { margin: 0 0 8px; color: var(--red); font: 700 clamp(30px, 4vw, 46px)/1.1 var(--font-title); animation: welcome-caption 450ms both; }
 .welcome-copy p { margin: 8px 0; }
 .welcome-invitation { color: var(--ink-soft); }
 .welcome-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 10px; }
@@ -43,11 +43,11 @@
 .welcome-handwriting { margin: 0; }
 .welcome-handwriting svg { width: min(510px, 85%); max-height: 155px; overflow: visible; }
 .welcome-handwriting text {
-  font: 700 88px 'Caveat', cursive; stroke: var(--red); stroke-width: 1.5;
+  font: 700 88px var(--font-title); stroke: var(--red); stroke-width: 1.5;
   fill: transparent; stroke-dasharray: 650; stroke-dashoffset: 650;
   animation: welcome-write 1.7s ease forwards, welcome-fill 0.4s 1.3s ease forwards;
 }
-.welcome-begin { background: #fff6c9; border-width: 2px; font: 700 34px/1 'Caveat', cursive; padding: 12px 28px; animation: welcome-breathe 2.4s ease-in-out infinite; }
+.welcome-begin { background: #fff6c9; border-width: 2px; font: 700 34px/1 var(--font-title); padding: 12px 28px; animation: welcome-breathe 2.4s ease-in-out infinite; }
 .welcome-sound-note { margin: 12px 0 3px; font-size: 19px; color: var(--ink-soft); }
 .welcome-gated .welcome-skip { background: transparent; border: 0; box-shadow: none; text-decoration: underline; font-size: 19px; }
 .welcome-speed, .welcome-flash { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
@@ -75,7 +75,7 @@
   overflow-y: auto; max-height: calc(100dvh - 90px);
   background: radial-gradient(ellipse at center, #f2ece0ee, #f2ece0b3 60%, transparent 73%);
 }
-.welcome-subtitle { margin: -6px auto 8px; max-width: 560px; font: 700 30px/1.05 'Caveat', cursive; color: var(--ink); }
+.welcome-subtitle { margin: -6px auto 8px; max-width: 560px; font: 700 30px/1.05 var(--font-title); color: var(--ink); }
 .welcome-playline { font-size: 20px; line-height: 1.3; margin: 12px auto; max-width: 620px; color: var(--ink-soft); }
 .welcome-cast, .welcome-creatures { display: flex; justify-content: center; align-items: end; gap: 24px; }
 .welcome-character, .welcome-creature { margin: 0; flex: 1; max-width: 150px; animation: welcome-enter 650ms both; }

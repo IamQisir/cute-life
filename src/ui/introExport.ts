@@ -25,9 +25,12 @@ export { INTRO_CODECS } from './welcomeVideo';
 
 // The end card, settled, before the fade to paper.
 const posterFrame = String(Math.round((TRAILER_SECONDS - 1.2) * INTRO_FPS) + 1).padStart(5, '0');
-export const INTRO_COMMANDS = INTRO_FORMATS.map(({ name }) => [
+export const INTRO_COMMANDS = INTRO_FORMATS.map(({ name, width, height }) => [
   `ffmpeg -y -framerate 60 -i ${name}/%05d.png -i audio.wav -c:v libsvtav1 -crf 40 -preset 5 -svtav1-params tune=0 -pix_fmt yuv420p -c:a libopus -b:a 128k intro-${name}-av1.webm`,
   `ffmpeg -y -framerate 60 -i ${name}/%05d.png -i audio.wav -c:v libx265 -crf 28 -preset slow -tag:v hvc1 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart intro-${name}-hevc.mp4`,
   `ffmpeg -y -framerate 60 -i ${name}/%05d.png -i audio.wav -c:v libx264 -crf 26 -preset slow -tune animation -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart intro-${name}-h264.mp4`,
+  // Phones: 1080p at 30 fps (see SMALL_INTRO_CODECS).
+  `ffmpeg -y -framerate 60 -i ${name}/%05d.png -i audio.wav -vf scale=${width}:${height}:flags=lanczos,fps=30 -c:v libx265 -crf 25 -preset slow -x265-params level-idc=40:vbv-maxrate=2500:vbv-bufsize=5000 -tag:v hvc1 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart intro-${name}-small-hevc.mp4`,
+  `ffmpeg -y -framerate 60 -i ${name}/%05d.png -i audio.wav -vf scale=${width}:${height}:flags=lanczos,fps=30 -c:v libx264 -crf 22 -preset slow -tune animation -profile:v high -level:v 4.0 -maxrate 3M -bufsize 6M -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart intro-${name}-small-h264.mp4`,
   `ffmpeg -y -i ${name}/${posterFrame}.png -vf scale=iw/2:-1 -q:v 3 intro-${name}.jpg`,
 ].join('\n')).join('\n');

@@ -49,7 +49,7 @@ describe('virtual intro frames', () => {
   });
   it('prints AV1, HEVC and H.264 encodes plus a poster for both formats', () => {
     for (const name of ['landscape', 'portrait']) {
-      for (const file of ['av1.webm', 'hevc.mp4', 'h264.mp4']) expect(INTRO_COMMANDS).toContain(`intro-${name}-${file}`);
+      for (const file of ['av1.webm', 'hevc.mp4', 'h264.mp4', 'small-hevc.mp4', 'small-h264.mp4']) expect(INTRO_COMMANDS).toContain(`intro-${name}-${file}`);
       expect(INTRO_COMMANDS).toContain(`intro-${name}.jpg`);
     }
   });
@@ -64,6 +64,14 @@ describe('intro playback decisions', () => {
     expect(introSource(1920, 1080, '/', only('avc1')).video).toBe('/intro/intro-landscape-h264.mp4');
     // Nothing answers: fall back to H.264 rather than giving up.
     expect(introSource(1920, 1080, '/', () => '').video).toBe('/intro/intro-landscape-h264.mp4');
+  });
+  it('gives phone-sized viewports the 1080p/30 encodes, HEVC first', () => {
+    expect(introSource(390, 844, '/', only('hvc1')).video).toBe('/intro/intro-portrait-small-hevc.mp4');
+    expect(introSource(390, 844, '/', only('avc1')).video).toBe('/intro/intro-portrait-small-h264.mp4');
+    expect(introSource(844, 390, '/', only('av01')).video).toBe('/intro/intro-landscape-small-h264.mp4');
+    expect(introSource(1024, 768, '/', only('hvc1')).video).toBe('/intro/intro-landscape-small-hevc.mp4');
+    expect(introSource(1280, 800, '/', only('hvc1')).video).toBe('/intro/intro-landscape-hevc.mp4');
+    expect(introSource(390, 844, '/').poster).toBe('/intro/intro-portrait.jpg');
   });
   it('uses portrait below aspect 1 and preserves deployment base URLs', () => {
     expect(introSource(1080, 1920, '/cute/', only('av01'))).toEqual({ video: '/cute/intro/intro-portrait-av1.webm', poster: '/cute/intro/intro-portrait.jpg' });

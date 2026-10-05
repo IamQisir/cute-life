@@ -976,7 +976,12 @@ async function main() {
       perf.cells = (mode === 'battle' && !welcome.active ? battle.sim : sim).cells.size;
       if (!welcome.active) perf.quality = mode;
     }
+    // While the intro video covers the screen, skip drawing the world under it:
+    // on phones that work competed with the decoder and the video froze, then skipped.
+    const covered = welcome.covering;
+    app.stage.visible = !covered;
     if (welcome.active) {
+      if (covered) return;
       welcome.update(t);
       selectionGfx.clear();
       territoryView.update(cam, null);

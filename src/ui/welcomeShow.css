@@ -1,0 +1,147 @@
+.welcome-showing #hud { opacity: 0; pointer-events: none; }
+#stage { transition: opacity 240ms ease; }
+.welcome-leaving #stage { opacity: 0; }
+.welcome-overlay {
+  position: fixed; inset: 0; z-index: 11; touch-action: pan-y;
+  transition: opacity 240ms ease;
+  background: radial-gradient(ellipse at center, transparent 38%, #65574724 100%);
+}
+.welcome-note {
+  position: absolute; top: max(16px, env(safe-area-inset-top)); left: 50%;
+  transform: translateX(-50%) rotate(-1deg);
+  width: min(700px, calc(100vw - 32px)); max-height: calc(100dvh - 32px);
+  padding: 18px 22px; overflow-y: auto; touch-action: pan-y;
+  background: #fff6c9ed; border: 1.6px solid var(--ink-soft);
+  border-radius: var(--sketch-2); box-shadow: 4px 6px 0 rgba(0, 0, 0, 0.09);
+  font-size: 23px; line-height: 1.25;
+}
+.welcome-title { margin: 0 0 8px; color: var(--red); font: 700 clamp(30px, 4vw, 46px)/1.1 'Caveat', cursive; animation: welcome-caption 450ms both; }
+.welcome-copy p { margin: 8px 0; }
+.welcome-invitation { color: var(--ink-soft); }
+.welcome-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 10px; }
+.welcome-actions .btn { font-size: 21px; }
+.welcome-actions .welcome-skip { border: 0; background: transparent; box-shadow: none; text-decoration: underline; padding: 2px 8px; font-size: 18px; }
+.welcome-actions .btn:focus-visible { outline: 2px dashed var(--blue); outline-offset: 3px; }
+.welcome-final .welcome-note { top: auto; bottom: max(18px, env(safe-area-inset-bottom)); }
+.welcome-closing { opacity: 0; }
+@media (max-width: 720px), (max-height: 540px) {
+  .welcome-note { padding: 12px 16px; font-size: 19px; }
+  .welcome-title { font-size: 30px; }
+  .welcome-actions .btn { font-size: 19px; }
+}
+@media (prefers-reduced-motion: reduce) { .welcome-overlay, #stage { transition: none; } }
+.welcome-speaker {
+  position: absolute; right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom)); font-size: 17px;
+}
+.welcome-final .welcome-speaker { bottom: auto; top: max(16px, env(safe-area-inset-top)); }
+
+.welcome-gated .welcome-note {
+  top: 50%; transform: translate(-50%, -50%) rotate(-1deg); text-align: center;
+  border: 0; background: transparent; box-shadow: none; padding: 24px;
+}
+.welcome-handwriting { margin: 0; }
+.welcome-handwriting svg { width: min(510px, 85%); max-height: 155px; overflow: visible; }
+.welcome-handwriting text {
+  font: 700 88px 'Caveat', cursive; stroke: var(--red); stroke-width: 1.5;
+  fill: transparent; stroke-dasharray: 650; stroke-dashoffset: 650;
+  animation: welcome-write 1.7s ease forwards, welcome-fill 0.4s 1.3s ease forwards;
+}
+.welcome-begin { background: #fff6c9; border-width: 2px; font: 700 34px/1 'Caveat', cursive; padding: 12px 28px; animation: welcome-breathe 2.4s ease-in-out infinite; }
+.welcome-sound-note { margin: 12px 0 3px; font-size: 19px; color: var(--ink-soft); }
+.welcome-gated .welcome-skip { background: transparent; border: 0; box-shadow: none; text-decoration: underline; font-size: 19px; }
+.welcome-speed, .welcome-flash { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
+.welcome-speed svg { width: 100%; height: 100%; }
+.welcome-speed path { fill: none; stroke: #8a7d6c; stroke-width: 2; stroke-linecap: round; }
+.welcome-flash { background: #fffdf6; }
+.welcome-note, .welcome-speaker { z-index: 1; }
+@keyframes welcome-write { to { stroke-dashoffset: 0; } }
+@keyframes welcome-fill { to { fill: var(--red); } }
+@keyframes welcome-breathe { 50% { transform: scale(1.045) rotate(0.5deg); box-shadow: 4px 5px 0 #65574722; } }
+@media (prefers-reduced-motion: reduce) {
+  .welcome-handwriting text { animation: none; stroke-dashoffset: 0; fill: var(--red); }
+  .welcome-begin { animation: none; }
+}
+.welcome-speaker { display: flex; align-items: center; gap: 6px; }
+.welcome-speaker .toolbar-icon { width: 22px; height: 22px; }
+
+/* The title lives on top of the running Pixi world, on a translucent sheet of paper. */
+.welcome-gated {
+  background: radial-gradient(ellipse at center, #f2ece0c7 10%, #f2ece071 80%);
+  backdrop-filter: blur(1px);
+}
+.welcome-gated .welcome-note {
+  width: min(880px, calc(100vw - 24px)); padding: 18px 28px;
+  overflow-y: auto; max-height: calc(100dvh - 90px);
+  background: radial-gradient(ellipse at center, #f2ece0ee, #f2ece0b3 60%, transparent 73%);
+}
+.welcome-subtitle { margin: -6px auto 8px; max-width: 560px; font: 700 30px/1.05 'Caveat', cursive; color: var(--ink); }
+.welcome-playline { font-size: 20px; line-height: 1.3; margin: 12px auto; max-width: 620px; color: var(--ink-soft); }
+.welcome-cast, .welcome-creatures { display: flex; justify-content: center; align-items: end; gap: 24px; }
+.welcome-character, .welcome-creature { margin: 0; flex: 1; max-width: 150px; animation: welcome-enter 650ms both; }
+.welcome-character canvas { width: 94px; height: 94px; max-width: 100%; animation: welcome-idle 3.8s ease-in-out infinite; }
+.welcome-character figcaption, .welcome-creature figcaption { font-size: 19px; line-height: 1.05; color: var(--ink-soft); }
+.welcome-cast { margin: 12px auto 24px; max-width: 680px; }
+.welcome-creatures { gap: 70px; margin: 0 auto -10px; }
+.welcome-creature { max-width: 170px; }
+.welcome-creature canvas { width: 150px; height: 92px; max-width: 100%; object-fit: contain; animation: welcome-wiggle 4.2s ease-in-out infinite; }
+.welcome-character-1, .welcome-creature-1 { animation-delay: 140ms; }
+.welcome-character-2, .welcome-creature-2 { animation-delay: 280ms; }
+.welcome-character-3 { animation-delay: 420ms; }
+.welcome-character-1 canvas { animation-delay: -1s; }
+.welcome-character-2 canvas { animation-delay: -2s; }
+.welcome-character-3 canvas { animation-delay: -3s; }
+.welcome-creature-1 canvas { animation-delay: -1.4s; }
+.welcome-creature-2 canvas { animation-delay: -2.8s; }
+.welcome-rule-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.welcome-rule { display: flex; align-items: center; gap: 3px; font-size: 17px; line-height: 1.05; }
+.welcome-rule canvas { width: 40px; height: 40px; flex-shrink: 0; }
+@keyframes welcome-enter { from { opacity: 0; transform: translateY(18px) scale(.85) rotate(-5deg); } to { opacity: 1; transform: none; } }
+@keyframes welcome-idle { 50% { transform: translateY(-6px) rotate(4deg) scale(1.03, .97); } }
+@keyframes welcome-wiggle { 50% { transform: translateY(-5px) rotate(-4deg); } }
+@keyframes welcome-caption { from { opacity: 0; transform: translateY(10px) rotate(-2deg); } to { opacity: 1; transform: none; } }
+@media (max-width: 600px) {
+  .welcome-gated .welcome-note { padding: 8px 12px; }
+  .welcome-handwriting svg { width: 300px; max-height: 106px; }
+  .welcome-subtitle { font-size: 26px; max-width: 320px; margin-top: 0; }
+  .welcome-playline { font-size: 17px; max-width: 300px; }
+  .welcome-cast { gap: 4px; margin: 16px 0 22px; }
+  .welcome-character canvas { width: 72px; height: 72px; }
+  .welcome-character figcaption { font-size: 15px; min-height: 32px; }
+  .welcome-creatures { gap: 14px; margin-bottom: 0; }
+  .welcome-creature canvas { width: 90px; height: 56px; }
+  .welcome-creature figcaption { font-size: 14px; }
+  .welcome-begin { font-size: 30px; }
+  .welcome-rule-strip { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-height: 600px) and (min-width: 601px) {
+  .welcome-creatures { position: absolute; inset: 70px 0 auto; justify-content: space-between; pointer-events: none; }
+  .welcome-creature-1 { visibility: hidden; }
+  .welcome-cast { margin: 8px auto 12px; }
+  .welcome-character canvas { width: 62px; height: 62px; }
+  .welcome-handwriting svg { max-height: 110px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .welcome-character, .welcome-creature, .welcome-character canvas, .welcome-creature canvas, .welcome-title { animation: none; }
+}
+
+@media (max-width: 600px) and (max-height: 700px) {
+  .welcome-handwriting svg { max-height: 86px; }
+  .welcome-creature canvas { width: 76px; height: 46px; }
+  .welcome-creature figcaption { font-size: 12px; }
+  .welcome-subtitle { font-size: 24px; }
+  .welcome-playline { font-size: 16px; margin: 8px auto; }
+  .welcome-cast { margin: 8px 0 12px; }
+  .welcome-character canvas { width: 56px; height: 56px; }
+  .welcome-begin { font-size: 28px; padding: 10px 24px; }
+  .welcome-gated .welcome-skip { font-size: 16px; }
+}
+
+.welcome-video, .welcome-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #f2ece0; }
+.welcome-video { transition: opacity 240ms ease; }
+.welcome-video[hidden] { display: none; }
+.welcome-video-finished { opacity: 0; pointer-events: none; }
+.welcome-playing .welcome-note { top: auto; bottom: 16px; left: 16px; transform: none; width: auto; padding: 0; background: transparent; border: 0; box-shadow: none; }
+.welcome-playing .welcome-skip { background: #fff6c9ed; }
+@media (prefers-reduced-motion: reduce) { .welcome-video { transition: none; } }
+.welcome-video-description { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

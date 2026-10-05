@@ -27,6 +27,7 @@ import { createFollowState, updateFollow } from './render/followController';
 import { pointBounds, shouldFrameStamp } from './render/framing';
 import { TerritoryView } from './render/territoryView';
 import { WorldView } from './render/world';
+import { perf } from './render/perf';
 import { fromHash, toHash } from './share/link';
 import { Recorder, type Recording } from './share/recorder';
 import { Sim } from './sim';
@@ -34,6 +35,8 @@ import { BattleHud } from './ui/battleHud';
 import type { CardHandlers } from './ui/patternCard';
 import { SelectionMenu, type StampEntry, openImportDialog, openStampOffer } from './ui/stamps';
 import { Hud } from './ui/hud';
+import { Onboarding } from './ui/onboarding';
+import { WelcomeShow } from './ui/welcomeShow';
 
 const POPULATION_CAP = 25000;
 const MAX_RECORD_SECONDS = 15;
@@ -57,6 +60,18 @@ async function main() {
     autoDensity: true,
   });
   stage.appendChild(app.canvas);
+  perf.init();
+  // Measure the actual synchronous Pixi render call (CPU submission, not GPU completion).
+  if (perf.enabled) {
+    const render = app.renderer.render.bind(app.renderer);
+    app.renderer.render = ((...args: unknown[]) => {
+      const timing = perf.start();
+      const result = Reflect.apply(render, app.renderer, args);
+      perf.end('Pixi render', timing);
+      perf.finish(performance.now());
+      return result;
+    }) as typeof app.renderer.render;
+  }
 
   const sim = new Sim();
   const cam = new Camera();
@@ -96,10 +111,6 @@ async function main() {
   };
 
   const hud = new Hud(document.getElementById('hud')!, {
-    openHelp() {
-      // #25 will replace this with the tour + rules card
-      hud.toast('click to draw ~ space to play ~ scroll to zoom ~ right-drag to move', 6000);
-    },
     wakeCell(index) {
       if (audio.mode !== 'all') return;
       audio.unlock();
@@ -127,6 +138,7 @@ async function main() {
     },
     toggleHand,
     toggleRecord,
+    openHelp,
     share() {
       if (mode === 'battle') shareReplay();
       else copyLink();
@@ -154,6 +166,17 @@ async function main() {
     },
   });
 
+  const welcome = new WelcomeShow({
+    sim, cam, playing: () => playing, following: () => following,
+    setPlaying, setFollowing, refreshStatus,
+  }, { stage: app.stage, renderer: app.renderer, view, audio, soundChanged: () => hud.setSound(audio.mode) });
+  const onboarding = new Onboarding(() => mode, welcome);
+
+  /** Shared entry point for the help button and the future title-cell action. */
+  function openHelp() {
+    onboarding.openHelp();
+  }
+
   import.meta.hot?.dispose(() => hud.dispose());
 
   function refreshStatus() {
@@ -169,6 +192,7 @@ async function main() {
   function togglePlay() {
     audio.unlock();
     setPlaying(!playing);
+    if (playing) onboarding.played();
   }
 
   function toggleHand() {
@@ -543,6 +567,7 @@ async function main() {
       syncPalette();
       fitArena();
     }
+    onboarding.modeChanged();
   }
 
   function exitBattle() {
@@ -554,6 +579,7 @@ async function main() {
     hud.closeResult();
     Object.assign(cam, sandboxCam);
     if (fromChallengeHash(location.hash) || fromReplayHash(location.hash)) forgetSharedLink();
+    onboarding.modeChanged();
   }
 
   function recordReplay() {
@@ -927,12 +953,29 @@ async function main() {
 
   app.ticker.add(() => {
     const t = performance.now();
+    perf.begin(t);
+    if (perf.enabled) {
+      perf.cells = (mode === 'battle' && !welcome.active ? battle.sim : sim).cells.size;
+      if (!welcome.active) perf.quality = mode;
+    }
+    if (welcome.active) {
+      welcome.update(t);
+      selectionGfx.clear();
+      territoryView.update(cam, null);
+      arenaView.update(cam, null, { showZones: [] });
+      view.update(welcome.renderTime(t), sim, cam, null, true);
+      return;
+    }
     if (playing && t - lastStep >= 1000 / genPerSec) {
       lastStep = t;
+      const timing = perf.start();
       advance();
+      perf.end('sim/bake playback', timing);
     }
     if (mode === 'battle') {
+      const timing = perf.start();
       battle.update(t);
+      perf.end('sim/bake playback', timing);
       selectionGfx.clear();
       territoryView.update(cam, battle.sim);
       arenaView.update(cam, battle.layout(), battle.arenaState());
@@ -985,6 +1028,20 @@ async function main() {
   if (params.has('zoom')) cam.zoom = Number(params.get('zoom')) || cam.zoom;
   if (params.has('sprinkle')) shuffle();
   if (params.has('play')) setPlaying(true);
+
+  // Developer-only trailer tools, loaded on demand.
+  const introHost = {
+    sim, cam, playing: () => playing, following: () => following,
+    setPlaying, setFollowing, refreshStatus,
+  };
+  const introPresentation = { stage: app.stage, renderer: app.renderer, view, audio, soundChanged: () => hud.setSound(audio.mode) };
+  if (params.has('render-intro')) {
+    const { mountIntroExporter } = await import('./ui/welcomeExporter');
+    mountIntroExporter(app, introHost, introPresentation);
+  } else if (params.has('intro-preview')) {
+    const { mountTrailerPreview } = await import('./ui/trailerPreview');
+    mountTrailerPreview(app, introHost, introPresentation);
+  } else onboarding.start(Boolean(shared || offered || challenge || replayLink));
 
   // Handy for debugging and for future screenshot tooling.
   Object.assign(window, { cuteLife: { sim, cam, togglePlay, stepOnce, battle, enterBattle } });

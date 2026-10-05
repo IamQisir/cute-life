@@ -1,0 +1,43 @@
+.help-btn:focus-visible, .onboarding-note .btn:focus-visible {
+  outline: 2px dashed var(--blue);
+  outline-offset: 3px;
+}
+.onboarding-overlay { position: fixed; inset: 0; z-index: 11; }
+.onboarding-spotlight {
+  position: absolute;
+  pointer-events: none;
+  border: 2px dashed var(--red);
+  border-radius: var(--sketch);
+  box-shadow: 0 0 0 200vmax rgba(70, 55, 40, 0.28);
+}
+.onboarding-note {
+  position: absolute;
+  width: min(340px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  padding: 18px;
+  background: #fff6c9;
+  border: 1.6px solid var(--ink-soft);
+  border-radius: var(--sketch-2);
+  box-shadow: 4px 6px 0 rgba(0, 0, 0, 0.09);
+  font-size: 21px;
+  line-height: 1.25;
+}
+.onboarding-title { margin: 0 0 10px; font: 700 32px/1 'Caveat', cursive; color: var(--red); }
+.onboarding-note p { margin: 0 0 12px; overflow-wrap: anywhere; }
+.onboarding-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.onboarding-actions .btn { font-size: 18px; padding: 3px 12px; }
+.onboarding-dots { margin-right: auto; font-size: 14px; letter-spacing: 3px; color: var(--ink-soft); }
+.onboarding-rules { display: grid; place-items: center; padding: 12px; background: rgba(70, 55, 40, 0.28); }
+.onboarding-rules .onboarding-note { position: relative; width: min(420px, calc(100vw - 24px)); }
+.onboarding-rule { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.onboarding-rule canvas { width: 58px; height: 58px; flex: 0 0 58px; }
+.onboarding-rule p { margin: 0; }
+.onboarding-footer { color: var(--ink-soft); font-size: 18px; }
+@media (max-width: 720px) {
+  .onboarding-note { width: calc(100vw - 24px); padding: 14px; font-size: 18px; }
+  .onboarding-title { font-size: 29px; }
+}
+.onboarding-help .onboarding-actions { flex-direction: column; align-items: stretch; }

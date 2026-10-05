@@ -13,6 +13,8 @@ import type { SimView } from '../sim';
 import type { Camera } from './camera';
 import { MOODS, type Mood, PALETTES, type Palette, TEAM_PALETTES, TEX_SIZE, drawFaceOnly, drawHatch, drawNote, drawZ } from './cellArt';
 import { SpritePool, cellHash, tex } from './util';
+import { VisibleClusterCache, type WorldRect } from './visibleClusters';
+import { perf } from './perf';
 
 const FAMILY_PALETTE: Record<Family, number> = { still: 3, oscillator: 2, spaceship: 0, blob: 1 };
 const BODY_R = 0.72;
@@ -59,6 +61,8 @@ export class OrganismView {
   private noteTex = tex(drawNote());
   private clusters: Styled[] = [];
   private clusterVersion = -1;
+  private clusterCache = new VisibleClusterCache();
+  get spritesDrawn() { return this.facePool.drawn + this.extraPool.drawn; }
   private built: Built | null = null;
 
   constructor() {
@@ -73,9 +77,18 @@ export class OrganismView {
     for (const m of MOODS) this.faces[m] = tex(drawFaceOnly(PALETTES[0], m, FACE_RES));
   }
 
-  private ensureClusters(sim: SimView) {
+  /** Standalone portraits own their textures; dispose them after extraction. */
+  destroy() {
+    const textures = [...Object.values(this.faces), this.zTex, this.noteTex, this.hatch.texture];
+    this.root.destroy({ children: true, context: true });
+    textures.forEach((texture) => texture.destroy(true));
+  }
+
+  private ensureClusters(sim: SimView, rect: WorldRect, visibleOnly: boolean) {
     if (this.clusterVersion === sim.version) return;
-    this.clusters = sim.teamClusters ? sim.teamClusters() : findClusters(sim.cells);
+    const timing = perf.start();
+    this.clusters = sim.teamClusters ? sim.teamClusters() : visibleOnly ? this.clusterCache.get(sim.cells, sim.version, rect) : findClusters(sim.cells);
+    perf.end('clusters', timing);
     this.clusterVersion = sim.version;
   }
 
@@ -167,11 +180,11 @@ export class OrganismView {
     if (lines) g.stroke({ width: (2.2 / cam.zoom) * U, color: hex(PALETTES[0].outline), alpha: 0.6, cap: 'round' });
   }
 
-  update(now: number, sim: SimView, cam: Camera) {
-    this.ensureClusters(sim);
+  update(now: number, sim: SimView, cam: Camera, visibleOnly = false) {
     const z = cam.zoom;
     const [vx0, vy0] = cam.toWorld(0, 0);
     const [vx1, vy1] = cam.toWorld(cam.w, cam.h);
+    this.ensureClusters(sim, { x0: vx0, y0: vy0, x1: vx1, y1: vy1 }, visibleOnly);
     if (this.needsBuild(sim, cam, vx0, vy0, vx1, vy1)) this.build(sim, cam, vx0, vy0, vx1, vy1);
     this.world.scale.set(z / U);
     this.world.position.set(cam.w / 2 - cam.x * z, cam.h / 2 - cam.y * z);

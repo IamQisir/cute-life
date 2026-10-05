@@ -188,6 +188,10 @@ export class Hud {
     this.settingsPopover = new Popover(this.settingsBtn, this.settingsMenu, () => this.modePopover.close());
     const toolbar = { mode: this.modeBtn, record: this.recordBtn, share: shareBtn, follow: this.followBtn, settings: this.settingsBtn };
     topRight.append(...TOOLBAR_ITEMS.map((id) => toolbar[id]));
+    const helpBtn = toolbarButton('help', 'help', 'help', a.openHelp);
+    helpBtn.addEventListener('keydown', (e) => e.stopPropagation());
+    helpBtn.addEventListener('keyup', (e) => e.stopPropagation());
+    topRight.insertBefore(helpBtn, this.settingsBtn);
     const topArea = el('div', 'top-area');
     title.setAttribute('aria-label', 'cute life');
     const menus = el('div', 'top-menus');

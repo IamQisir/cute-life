@@ -24,18 +24,28 @@ export function noteFor(x: number, y: number): number {
 
 /** 'all' = notes + pad, 'music' = pad only, 'off' = silent. */
 export type SoundMode = 'all' | 'music' | 'off';
+function savedSoundMode(): SoundMode {
+  try {
+    const mode = localStorage.getItem('cute-life:sound-mode');
+    if (mode === 'all' || mode === 'music' || mode === 'off') return mode;
+  } catch { /* Sound controls still work when storage is unavailable. */ }
+  return 'all';
+}
+
 const NEXT_MODE: Record<SoundMode, SoundMode> = { all: 'music', music: 'off', off: 'all' };
 
 export class MusicBox {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private output: GainNode | null = null;
+  private welcomeHeld = false;
   private tap: MediaStreamAudioDestinationNode | null = null;
   private padGain: GainNode | null = null;
   private padTimer = 0;
   private beatTimer = 0;
   private pool: number[] = [];
   private lastNote = 0;
-  mode: SoundMode = 'all';
+  mode: SoundMode = savedSoundMode();
 
   get enabled() {
     return this.mode !== 'off';
@@ -54,7 +64,7 @@ export class MusicBox {
     const ctx = new AudioContext();
     this.ctx = ctx;
     this.master = ctx.createGain();
-    this.master.gain.value = this.enabled ? 1 : 0;
+    this.master.gain.value = this.enabled && !this.welcomeHeld ? 1 : 0;
     // A touch of echo makes single notes feel like a music box in a room.
     const delay = ctx.createDelay();
     delay.delayTime.value = 0.23;
@@ -63,7 +73,7 @@ export class MusicBox {
     const wet = ctx.createGain();
     wet.gain.value = 0.3;
     // Everything ends in `out`, which feeds the speakers and the recording tap.
-    const out = ctx.createGain();
+    const out = this.output = ctx.createGain();
     out.connect(ctx.destination);
     this.tap = ctx.createMediaStreamDestination();
     out.connect(this.tap);
@@ -71,8 +81,27 @@ export class MusicBox {
     this.master.connect(delay);
     delay.connect(fb).connect(delay);
     delay.connect(wet).connect(out);
-    this.startPad();
+    if (!this.welcomeHeld) this.startPad();
     this.beatTimer = window.setInterval(() => this.beat(), BEAT_MS);
+  }
+
+  /** Intro owns a separate dry bus; the normal conductor/pad stay quiet. */
+  beginWelcome() {
+    this.welcomeHeld = true;
+    this.pool = [];
+    try { this.unlock(); }
+    catch { this.welcomeHeld = false; return null; }
+    this.master!.gain.cancelScheduledValues(this.ctx!.currentTime);
+    this.master!.gain.setValueAtTime(0, this.ctx!.currentTime);
+    return {
+      context: this.ctx!, output: this.output!,
+      release: () => {
+        this.welcomeHeld = false;
+        this.pool = [];
+        this.master!.gain.setTargetAtTime(this.enabled ? 1 : 0, this.ctx!.currentTime, 0.1);
+        if (!this.padGain) this.startPad();
+      },
+    };
   }
 
   /** The mixed output as a stream, for recording. Null until audio is unlocked. */
@@ -83,8 +112,10 @@ export class MusicBox {
   /** Cycles all -> music only -> off. Returns the new mode. */
   cycleMode(): SoundMode {
     this.mode = NEXT_MODE[this.mode];
+    try { localStorage.setItem('cute-life:sound-mode', this.mode); }
+    catch { /* Preserve the choice in memory. */ }
     if (this.ctx && this.master) {
-      this.master.gain.setTargetAtTime(this.enabled ? 1 : 0, this.ctx.currentTime, 0.1);
+      this.master.gain.setTargetAtTime(this.enabled && !this.welcomeHeld ? 1 : 0, this.ctx.currentTime, 0.1);
     }
     this.pool = [];
     return this.mode;
@@ -121,7 +152,7 @@ export class MusicBox {
   }
 
   private beat() {
-    if (!this.ctx || !this.notesOn || this.pool.length === 0) return;
+    if (this.welcomeHeld || !this.ctx || !this.notesOn || this.pool.length === 0) return;
     const pool = this.pool;
     this.pool = [];
     if (Math.random() < REST_CHANCE) return;

@@ -4,6 +4,9 @@ import { UNIT_IDS, army, normalize, orient, phase, stamp, type Orientation, type
 import { DEFAULT_RULES, arenaConfig, initialState, observe, simulate, simulateGrid, stepSiege, validateArmy,
   type Rect, type SiegeRules, type SiegeState } from './siegeSim';
 
+// Freeze the original HP experiment contract when the playable default changes.
+export const HP_RULES: SiegeRules = { ...DEFAULT_RULES, scoring: 'hp', hitbox: 12, hp: 64, cap: 8, unitsPerHP: 16 };
+
 export const UPPER_GUN: Stamp = { id: 'gosperglidergun', x: 51, y: 4, orientation: 7 };
 export const LOWER_GUN: Stamp = { id: 'gosperglidergun', x: 51, y: 56, orientation: 3 };
 export const UPPER_EATER: Stamp = { id: 'eater1', x: 69, y: 35, orientation: 0 };
@@ -18,9 +21,9 @@ export const BREACH_ESCORT: Stamp[] = [
 ];
 export interface Table { title: string; headers: string[]; rows: (string | number | null)[][] }
 export interface ExperimentReport { tables: Table[]; gate: boolean; recipes: Record<string, Stamp[]> }
-const textRecipe = (units: Stamp[]): string => units.map(u => `${u.id}@${u.x},${u.y}/o${u.orientation ?? 0}`).join('; ');
-const percent = (n: number, d: number): string => `${n}/${d} (${d ? (100*n/d).toFixed(1) : '0.0'}%)`;
-const metrics = (s: SiegeState): (number | string | null)[] => [s.blue.firstContact, s.blue.killGen, DEFAULT_RULES.hp - s.blue.hp, s.blue.units, s.red.hp];
+export const textRecipe = (units: Stamp[]): string => units.map(u => `${u.id}@${u.x},${u.y}/o${u.orientation ?? 0}`).join('; ');
+export const percent = (n: number, d: number): string => `${n}/${d} (${d ? (100*n/d).toFixed(1) : '0.0'}%)`;
+const metrics = (s: SiegeState): (number | string | null)[] => [s.blue.firstContact, s.blue.killGen, HP_RULES.hp - s.blue.hp, s.blue.units, s.red.hp];
 function localCounts(grid: Grid, box: Rect, team: Team, width = 128): number {
   let n = 0;
   for(let y=box.y0;y<=box.y1;y++)for(let x=box.x0;x<=box.x1;x++)if(grid[y*width+x]===team)n++;
@@ -33,7 +36,7 @@ function coreEqual(a: Grid, b: Grid): boolean {
   for(let y=4;y<=39;y++)for(let x=51;x<=59;x++)if(a[y*128+x]!==b[y*128+x])return false;
   return true;
 }
-function legal(r: SiegeRules,p:Prefabs,team:Team,units:Stamp[]): boolean {
+export function legal(r: SiegeRules,p:Prefabs,team:Team,units:Stamp[]): boolean {
   try { validateArmy(r,p,team,units); return true; } catch(e) { if(e instanceof RangeError)return false; throw e; }
 }
 export function mirrorArmy(p: Prefabs, units: Stamp[]): Stamp[] {
@@ -45,7 +48,7 @@ export function mirrorArmy(p: Prefabs, units: Stamp[]): Stamp[] {
     return {...u,x:127-x1,y:u.y,orientation};
   });
 }
-export function traceFixture(p:Prefabs,red:Stamp[],blue:Stamp[],rules=DEFAULT_RULES) {
+export function traceFixture(p:Prefabs,red:Stamp[],blue:Stamp[],rules=HP_RULES) {
   let s=initialState(rules,placeArmies(arenaConfig(rules),army(p,red),army(p,blue)));
   let firstDisturbed:number|null=null,recovered:number|null=null,lastOriginalBlueGen=0;
   const e=blue.find(u=>u.id==='eater1');
@@ -63,7 +66,7 @@ export function traceFixture(p:Prefabs,red:Stamp[],blue:Stamp[],rules=DEFAULT_RU
 
 /** Compare complete core and post-port windows, every generation 321…640. */
 export function lateStreamComparison(p: Prefabs, escort: Stamp[]) {
-  const r = DEFAULT_RULES;
+  const r = HP_RULES;
   let solo = initialState(r, placeArmies(arenaConfig(r), stamp(p, UPPER_GUN), []));
   let combined = initialState(r, placeArmies(arenaConfig(r), army(p, [UPPER_GUN, ...escort]), stamp(p, UPPER_EATER)));
   let coreMatches = 0, streamMatches = 0;
@@ -81,9 +84,37 @@ export function lateStreamComparison(p: Prefabs, escort: Stamp[]) {
   return { coreMatches, streamMatches, generations: 320, bluePopulation: population(combined.grid).blue };
 }
 
+export function* trains(count:number):Generator<Stamp[]> {
+  for(const o of [2,4] as Orientation[])for(const spacing of [7,10,14])for(const shift of [0,2,4,6,8])for(const stagger of [-6,-3,0,3,6])for(let lane=22;lane<=62;lane++){
+    yield Array.from({length:count},(_,i)=>({id:'lwss',x:4+shift+i*spacing,y:lane+(i%2)*stagger,orientation:o}));
+  }
+}
+
+export function* mixed(kind:'glider'|'growth'|'blocks'):Generator<Stamp[]> {
+  for(const o of [2,4] as Orientation[])for(const spacing of [10,14])for(const shift of [0,4,8])for(let lane=26;lane<=54;lane++)for(const delta of [-8,-4,0,4,8]){
+    const ships:Stamp[]=Array.from({length:kind==='glider'?3:2},(_,i)=>({id:'lwss',x:4+shift+i*spacing,y:lane,orientation:o}));
+    if(kind==='glider')ships.push({id:'glider',x:54,y:lane+delta,orientation:0},{id:'block',x:50,y:lane+delta-6});
+    if(kind==='growth')ships.push({id:'rpentomino',x:54,y:lane+delta},{id:'rpentomino',x:48,y:lane+delta-8},{id:'block',x:44,y:lane+delta+6});
+    if(kind==='blocks')for(let i=0;i<4;i++)ships.push({id:'block',x:50-i*6,y:lane+delta});
+    yield ships;
+  }
+}
+
+export function* gliders():Generator<Stamp[]> {
+  for(const o of [0,3,6,7] as Orientation[])for(const gap of [4,6,8])for(let y=4;y<=78;y+=2)for(const x of [20,28,36]){
+    yield Array.from({length:7},(_,i)=>({id:'glider',x:x+(i%2)*6,y:y+Math.floor(i/2)*gap,orientation:o}));
+  }
+}
+
+export function* whole():Generator<Stamp[]> {
+  for(const o of [2,4] as Orientation[])for(const spacing of [7,10,14])for(const shift of [0,4,8])for(const separation of [6,10,14])for(let y=20;y<=58;y+=2){
+    yield Array.from({length:8},(_,i)=>({id:'lwss',x:4+shift+(i%4)*spacing,y:y+Math.floor(i/4)*separation,orientation:o}));
+  }
+}
+
 /** Exhaustive finite Cartesian searches; success means exposure, kill means <=640. No random sampling. */
 export function runExperiments(p: Prefabs, extraRle: {snark:string;buckaroo:string}, progress: (s:string)=>void = ()=>{}): ExperimentReport {
-  const r=DEFAULT_RULES,tables:Table[]=[],recipes:Record<string,Stamp[]>={gun:[UPPER_GUN],eater:[UPPER_EATER],initialBest:BEST_ESCORT};
+  const r=HP_RULES,tables:Table[]=[],recipes:Record<string,Stamp[]>={gun:[UPPER_GUN],eater:[UPPER_EATER],initialBest:BEST_ESCORT};
   const table=(title:string,headers:string[],rows:Table['rows'])=>tables.push({title,headers,rows});
   table('Canonical prefab catalogue',['Unit','Cost','Footprint','Phase populations 0/1/2/3'],UNIT_IDS.map(id=>[id,p[id].cost,`${p[id].width}×${p[id].height}`,
     id==='lwss'||id==='glider'? [0,1,2,3].map(g=>phase(p[id].cells,g).length).join('/'):'seed only']));
@@ -165,35 +196,11 @@ export function runExperiments(p: Prefabs, extraRle: {snark:string;buckaroo:stri
     recipes[label]=localBest;
     if(localIntactState)recipes[`${label} intact gun`]=localIntact;
   };
-  function* trains(count:number):Generator<Stamp[]> {
-    for(const o of [2,4] as Orientation[])for(const spacing of [7,10,14])for(const shift of [0,2,4,6,8])for(const stagger of [-6,-3,0,3,6])for(let lane=22;lane<=62;lane++){
-      yield Array.from({length:count},(_,i)=>({id:'lwss',x:4+shift+i*spacing,y:lane+(i%2)*stagger,orientation:o}));
-    }
-  }
   assess('4 LWSS + gun',trains(4),true,[UPPER_EATER]);
   progress('Mixed escorts and whole-budget attacks');
-  function* mixed(kind:'glider'|'growth'|'blocks'):Generator<Stamp[]> {
-    for(const o of [2,4] as Orientation[])for(const spacing of [10,14])for(const shift of [0,4,8])for(let lane=26;lane<=54;lane++)for(const delta of [-8,-4,0,4,8]){
-      const ships:Stamp[]=Array.from({length:kind==='glider'?3:2},(_,i)=>({id:'lwss',x:4+shift+i*spacing,y:lane,orientation:o}));
-      if(kind==='glider')ships.push({id:'glider',x:54,y:lane+delta,orientation:0},{id:'block',x:50,y:lane+delta-6});
-      if(kind==='growth')ships.push({id:'rpentomino',x:54,y:lane+delta},{id:'rpentomino',x:48,y:lane+delta-8},{id:'block',x:44,y:lane+delta+6});
-      if(kind==='blocks')for(let i=0;i<4;i++)ships.push({id:'block',x:50-i*6,y:lane+delta});
-      yield ships;
-    }
-  }
   for(const kind of ['glider','growth','blocks'] as const)assess(`${kind} escort + gun`,mixed(kind),true,[UPPER_EATER]);
-  function* gliders():Generator<Stamp[]> {
-    for(const o of [0,3,6,7] as Orientation[])for(const gap of [4,6,8])for(let y=4;y<=78;y+=2)for(const x of [20,28,36]){
-      yield Array.from({length:7},(_,i)=>({id:'glider',x:x+(i%2)*6,y:y+Math.floor(i/2)*gap,orientation:o}));
-    }
-  }
   assess('7 gliders + gun',gliders(),true,[UPPER_EATER]);
   // Two rails of four ships; longitudinal spacing also changes arrival time by 2*spacing generations.
-  function* whole():Generator<Stamp[]> {
-    for(const o of [2,4] as Orientation[])for(const spacing of [7,10,14])for(const shift of [0,4,8])for(const separation of [6,10,14])for(let y=20;y<=58;y+=2){
-      yield Array.from({length:8},(_,i)=>({id:'lwss',x:4+shift+(i%4)*spacing,y:y+Math.floor(i/4)*separation,orientation:o}));
-    }
-  }
   assess('8 LWSS vs upper gun+eater (interference)',whole(),false,[...mirrorArmy(p,[UPPER_GUN]),UPPER_EATER]);
   assess('8 LWSS vs lower gun+eater',whole(),false,[...mirrorArmy(p,[LOWER_GUN]),UPPER_EATER]);
   const block:Stamp={id:'block',x:69,y:35};

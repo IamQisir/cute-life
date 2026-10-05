@@ -3,6 +3,9 @@
 // battle mode is active.
 
 import { type Stars, chooseDeployment } from './ai';
+
+/** The longest the AI may search before the reveal (it runs on the main thread). */
+const AI_THINK_MS = 1500;
 import { type AiArenaSize, readArenaSize, rememberArenaSize } from './arenaPreference';
 import {
   ARENA_PRESETS,
@@ -229,7 +232,8 @@ export class BattleMode {
     this.setPhase('thinking', now);
     // Let the HUD paint "thinking..." before the (synchronous) search runs.
     setTimeout(() => {
-      this.enemy = chooseDeployment(this.cfg, this.enemyTeam, stars, Math.floor(Math.random() * 2 ** 31));
+      // Capped so a huge arena or a slow phone never freezes the page for long.
+      this.enemy = chooseDeployment(this.cfg, this.enemyTeam, stars, Math.floor(Math.random() * 2 ** 31), AI_THINK_MS);
       this.reveal(performance.now());
     }, 60);
   }

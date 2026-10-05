@@ -226,9 +226,16 @@ function candidate(cfg: ArenaConfig, team: Team, random: Random, clumpsOnly = fa
 }
 
 /** Seeded search; all candidates at a given effort face the same opponent sample. */
+/**
+ * The AI's army. `budgetMs` caps the search time (the game passes one so a
+ * big arena never freezes the page); without it the search is fully
+ * deterministic for a seed.
+ */
 export function chooseDeployment(
-  cfg: ArenaConfig, team: Team, stars: Stars, seed: number = Date.now(),
+  cfg: ArenaConfig, team: Team, stars: Stars, seed: number = Date.now(), budgetMs = Infinity,
 ): Pt[] {
+  const deadline = Number.isFinite(budgetMs) ? performance.now() + budgetMs : Infinity;
+  const outOfTime = () => deadline !== Infinity && performance.now() > deadline;
   const valid = validateDeployment(cfg, team, []);
   if (!valid.ok) throw new RangeError(valid.reason);
   const zone = deployZone(cfg, team);
@@ -261,7 +268,7 @@ export function chooseDeployment(
     return total / opponents.length;
   };
   let bestScore = score(best);
-  for (let i = 1; i < effort.candidates; i++) {
+  for (let i = 1; i < effort.candidates && !outOfTime(); i++) {
     const points = candidate(cfg, team, random);
     const value = score(points);
     if (value > bestScore) {
@@ -269,8 +276,8 @@ export function chooseDeployment(
       bestScore = value;
     }
   }
-  for (let pass = 0; pass < effort.hillClimbPasses; pass++) {
-    for (let trial = 0; trial < 12; trial++) {
+  for (let pass = 0; pass < effort.hillClimbPasses && !outOfTime(); pass++) {
+    for (let trial = 0; trial < 12 && !outOfTime(); trial++) {
       const move = integer(random, best.length);
       const points = best.slice();
       if (random() < 0.75) {

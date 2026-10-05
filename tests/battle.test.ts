@@ -764,12 +764,13 @@ describe('huge arena', () => {
     const searches: { team: Team; stars: Stars; ms: number }[] = [];
     for (const team of [RED, BLUE] as const) for (const stars of [1, 2, 3, 4, 5] as const) {
       const before = performance.now();
-      const army = chooseDeployment(cfg, team, stars, 1001);
+      // The game caps the search at 1.5 s; the cap must hold even for 5 stars on huge.
+      const army = chooseDeployment(cfg, team, stars, 1001, 1500);
       const ms = performance.now() - before;
       searches.push({ team, stars, ms });
       expect(army).toHaveLength(cfg.budget);
       expect(validateDeployment(cfg, team, army)).toEqual({ ok: true });
-      expect(ms).toBeLessThan((stars <= 3 ? 2000 : 5000) * SLOW);
+      expect(ms).toBeLessThan(1500 + 1000 * SLOW);
     }
     console.info('Huge AI search elapsed ms:', searches);
     let red: Pt[] = [], blue: Pt[] = [];
@@ -785,4 +786,15 @@ describe('huge arena', () => {
     console.info(`Huge AI all efforts ${(before - start).toFixed(1)} ms; full battle ${elapsed.toFixed(1)} ms`);
     expect(elapsed).toBeLessThan(2000 * SLOW);
   }, 30_000);
+});
+
+describe('AI search time budget', () => {
+  it('is deterministic without a budget and stops early with one', () => {
+    const cfg = ARENA_PRESETS.xl;
+    expect(chooseDeployment(cfg, BLUE, 3, 77)).toEqual(chooseDeployment(cfg, BLUE, 3, 77));
+    const before = performance.now();
+    const army = chooseDeployment(ARENA_PRESETS.huge, BLUE, 5, 77, 50);
+    expect(performance.now() - before).toBeLessThan(50 + 1000 * SLOW);
+    expect(validateDeployment(ARENA_PRESETS.huge, BLUE, army)).toEqual({ ok: true });
+  });
 });

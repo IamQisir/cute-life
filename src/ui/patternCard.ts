@@ -57,7 +57,10 @@ export function patternCard(
   card.className = 'card';
   card.title = tooltip ? `${tooltip}\n(click to select, or drag onto the board)` : 'click to select, or drag onto the board';
   const label = document.createElement('div');
+  label.className = 'card-name';
   label.textContent = p.name;
+  // One long word (pentadecathlon, a custom stamp name) can't wrap at a space.
+  if (Math.max(...p.name.split(/\s+/).map((w) => w.length)) > 11) label.classList.add('long');
   card.append(patternThumb(p, cell), label);
   if (showCost) {
     const cost = document.createElement('div');

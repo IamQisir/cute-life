@@ -129,6 +129,8 @@ html, body {
 .btn:active { transform: scale(0.95); }
 .btn.on { background: #fde6b8; }
 .btn.big { font-size: 26px; padding: 4px 22px; color: var(--red); border-color: var(--red); }
+/* play ⇄ pause must not change width, or every control after it shifts. */
+.controls > .btn.big:first-child { min-width: 4em; }
 
 /* Menus occupy a grid row below the toolbar; the battle head never sits behind them. */
 .paper-menu {
@@ -214,12 +216,17 @@ html, body {
 .card.on { background: #fde6b8; border-color: var(--ink); }
 .card canvas { display: block; margin: 0 auto; }
 .card div { font-size: 16px; }
+/* Long names shrink a little, then hyphenate rather than spill out of the card. */
+.card .card-name { overflow-wrap: anywhere; hyphens: auto; line-height: 1.15; }
+.card .card-name.long { font-size: 13px; }
 
+/* Full-width box so its width never follows the status text: a shrink-to-fit
+   box centred at left: 50% re-wraps the buttons as the counts grow. */
 .bottom {
   position: absolute;
   bottom: 14px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 12px;
+  right: 12px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -233,7 +240,11 @@ html, body {
   background: no-repeat bottom / 100% 8px
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 8' preserveAspectRatio='none'%3E%3Cpath d='M2 5 Q50 2 100 4.5 T198 3.5' stroke='%23c4483a' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
+/* Let canvas clicks through the empty sides (beats `#hud > *`). */
+#hud > .bottom { pointer-events: none; }
+.bottom > * { pointer-events: auto; }
 .status b { font-weight: 700; color: var(--blue); }
 .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; }
 .stamp-controls {

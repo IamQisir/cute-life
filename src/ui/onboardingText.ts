@@ -35,7 +35,7 @@ export const TOUR_STEPS: TourStep[] = [
   {
     target: 'mode',
     title: 'modes',
-    text: 'the mode button top-right switches between sandbox, garden battle and crystal siege (siege is coming soon ~)',
+    text: 'the mode button top-right switches between sandbox, garden battle and crystal siege ~',
   },
   {
     target: 'share',
@@ -89,9 +89,12 @@ export const RULES_CARDS: Record<'sandbox' | 'battle' | 'siege', RulesCard> = {
     mode: 'siege',
     title: 'crystal siege',
     lines: [
-      { face: 'none', text: 'coming soon: two crystals stand on the field, ready for siege ~' },
-      { face: 'none', text: 'deploy guns and eaters to defend your crystal and crack theirs' },
+      { face: 'none', text: 'red vs blue: secretly deploy up to 72 cells of classic units in your zone ~' },
+      { face: 'none', text: 'protect your 48 hp crystal — keep units at least 2 cells away ~' },
+      { face: 'born', text: 'only enemy cells born inside a crystal crack it — sitting cells do no damage' },
+      { face: 'none', text: 'cells follow the standard game of life. the crystal only keeps score of the damage.' },
+      { face: 'teary', text: 'a crystal at 0 hp falls ~ or the higher hp wins after 640 generations' },
     ],
-    footer: 'a new battle mode is coming soon ~',
+    footer: 'protect your crystal and crack theirs to win ~',
   },
 };

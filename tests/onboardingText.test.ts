@@ -104,12 +104,14 @@ describe('onboardingText', () => {
       expect(allText).toContain('extinct');
     });
 
-    it('has siege card with teaser mentioning crystals, guns, and eaters', () => {
+    it('has siege card covering rules and crystal damage', () => {
+      const faces = RULES_CARDS.siege.lines.map((l) => l.face);
+      expect(faces).toContain('born');
       const allText = RULES_CARDS.siege.lines.map((l) => l.text).join(' ');
-      expect(allText).toContain('coming soon');
-      expect(allText).toContain('crystals');
-      expect(allText).toContain('guns');
-      expect(allText).toContain('eaters');
+      expect(allText).toContain('red vs blue');
+      expect(allText).toContain('crystal');
+      expect(allText).toContain('cells follow the standard game of life. the crystal only keeps score of the damage.');
+      expect(allText).toContain('born');
     });
   });
 });

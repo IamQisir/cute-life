@@ -1,4 +1,6 @@
-import { type Category, byCategory } from '../life/catalog';
+import { CATALOG, type Category, byCategory } from '../life/catalog';
+import { UNIT_IDS, type UnitId } from '../battle/siege/prefabs';
+import { UNIT_TEXT } from '../battle/siege/siegeText';
 import { type Pattern, cellCount } from '../life/patterns';
 import type { SoundMode } from '../audio/musicBox';
 import { WorldView } from '../render/world';
@@ -104,6 +106,9 @@ export class Hud {
   private cards = new Map<Pattern, HTMLElement>();
   private customCards = new Map<Pattern, HTMLElement>();
   private customArea = el('div', 'custom-area');
+  /** Crystal Siege: only the six prefab units, each with how many more fit. */
+  private siegeArea = el('div', 'siege-area');
+  private siegeCards = new Map<UnitId, { pattern: Pattern; card: HTMLElement; left: HTMLElement }>();
   /** The stamp palette; also the battle's palette (cards show cell costs). */
   readonly palette: HTMLElement;
   private selectBtn: HTMLButtonElement;
@@ -240,6 +245,19 @@ export class Hud {
       palette.append(paletteSection(group.category, group.label, cards.length, cards, OPEN_BY_DEFAULT.has(group.category)));
     }
     palette.append(this.customArea);
+    const unitCards = UNIT_IDS.map((id) => {
+      const p = CATALOG.find((entry) => entry.id === id)!;
+      const card = patternCard(p, cell, {
+        ...a.cardDrag,
+        pick: () => a.pickPattern(card.classList.contains('on') ? null : p),
+      }, true, `${UNIT_TEXT[id].name}: ${UNIT_TEXT[id].blurb}`);
+      const left = el('div', 'left');
+      card.append(left);
+      this.siegeCards.set(id, { pattern: p, card, left });
+      return card;
+    });
+    this.siegeArea.append(paletteSection('siege-units', 'units', 0, unitCards, true));
+    palette.append(this.siegeArea);
 
     const bottom = el('div', 'bottom');
     const controls = el('div', 'controls');
@@ -303,6 +321,7 @@ export class Hud {
     this.picked = p;
     this.stampControls.hidden = !p;
     for (const [q, card] of [...this.cards, ...this.customCards]) card.classList.toggle('on', q === p);
+    for (const { pattern, card } of this.siegeCards.values()) card.classList.toggle('on', pattern === p);
   }
 
   setFollow(on: boolean) {
@@ -315,6 +334,14 @@ export class Hud {
   setBudget(left: number | null) {
     for (const [p, card] of [...this.cards, ...this.customCards]) {
       card.classList.toggle('off', left !== null && cellCount(p) > left);
+    }
+  }
+
+  /** Crystal Siege deployment: how many more of each unit fit (limit and budget). */
+  setSiegeUnits(left: Record<UnitId, number>) {
+    for (const [id, { card, left: label }] of this.siegeCards) {
+      card.classList.toggle('off', left[id] <= 0);
+      label.textContent = left[id] > 0 ? `${left[id]} more` : 'none left';
     }
   }
 
@@ -343,7 +370,9 @@ export class Hud {
   /** Switch the HUD between the sandbox and battle layouts. */
   setMode(mode: PlayableMode) {
     this.cornerCells.reset();
-    this.root.classList.toggle('battle', mode === 'battle');
+    // Both battle modes share the battle layout; siege swaps in its own unit palette.
+    this.root.classList.toggle('battle', mode !== 'sandbox');
+    this.root.classList.toggle('siege', mode === 'siege');
     this.mode = mode;
     const name = MODES.find((option) => option.id === mode)!.name;
     decorate(this.modeBtn, mode, name, `mode: ${name}`);

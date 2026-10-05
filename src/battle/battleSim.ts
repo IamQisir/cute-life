@@ -107,8 +107,12 @@ export class BattleSim implements SimView {
 
   /** One generation. Returns the newborn cells with their team. */
   advance(now: number): [number, number, Team][] {
+    return this.advanceTo(stepGrid(this.grid, this.cfg.width, this.cfg.height, this.cfg.wrapX, this.cfg.wrapY), now);
+  }
+
+  /** One generation computed elsewhere (Crystal Siege steps its own state); same animation bookkeeping. */
+  advanceTo(next: Grid, now: number): [number, number, Team][] {
     const prev = this.grid;
-    const next = stepGrid(prev, this.cfg.width, this.cfg.height, this.cfg.wrapX, this.cfg.wrapY);
     this.settled = sameGrid(next, prev) || (this.prev !== null && sameGrid(next, this.prev));
     this.prev = prev;
     const born: [number, number, Team][] = [];

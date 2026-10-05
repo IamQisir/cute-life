@@ -21,5 +21,5 @@ export function soundState(mode: SoundMode) {
 }
 
 export function activeToolLabel(select: boolean, move: boolean, mode: PlayableMode) {
-  return mode === 'battle' ? '' : [select && 'select', move && 'move'].filter(Boolean).join(' + ');
+  return mode !== 'sandbox' ? '' : [select && 'select', move && 'move'].filter(Boolean).join(' + ');
 }

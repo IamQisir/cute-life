@@ -6,6 +6,10 @@ import { Application, Graphics, UPDATE_PRIORITY } from 'pixi.js';
 import { MusicBox } from './audio/musicBox';
 import { fromChallengeHash, fromReplayHash } from './battle/challenge';
 import { BattleMode, type Opponent } from './battle/mode';
+import { SiegeMode } from './battle/siege/siegeMode';
+import { PROBLEM_TEXT, SAMPLE_NAMES, SIEGE_TEXT } from './battle/siege/siegeText';
+import { orientationOf, stampAt } from './battle/siege/units';
+import { UNIT_IDS, type UnitId } from './battle/siege/prefabs';
 import { attachInput } from './input';
 import { key, keyX, keyY, toList } from './life/engine';
 import { introPoints, pickIntroPicture } from './life/introArt';
@@ -22,6 +26,7 @@ import {
 import { type Pattern, placePattern } from './life/patterns';
 import { type Orientation, flipOrientation, orientPoints, rotateOrientation } from './life/orientation';
 import { ArenaView } from './render/arenaView';
+import { CrystalView } from './render/crystalView';
 import { Camera } from './render/camera';
 import { type FollowTarget, followTarget } from './render/follow';
 import { createFollowState, updateFollow } from './render/followController';
@@ -33,6 +38,7 @@ import { fromHash, toHash } from './share/link';
 import { Recorder, type Recording } from './share/recorder';
 import { Sim } from './sim';
 import { BattleHud } from './ui/battleHud';
+import { SiegeHud } from './ui/siegeHud';
 import type { CardHandlers } from './ui/patternCard';
 import { SelectionMenu, type StampEntry, openImportDialog, openStampOffer } from './ui/stamps';
 import { Hud } from './ui/hud';
@@ -43,6 +49,8 @@ const POPULATION_CAP = 25000;
 const MAX_RECORD_SECONDS = 15;
 /** A recorded battle replay: long enough for a large arena at 8 gen/s plus the slow finale. */
 const MAX_BATTLE_RECORD_SECONDS = 60;
+/** A whole siege: 640 generations at 8 gen/s, the reveal, the slow finale and the result hold. */
+const MAX_SIEGE_RECORD_SECONDS = 95;
 const RECORD_GEN_PER_SEC = 8;
 const RESULT_HOLD_MS = 2000;
 const MANUAL_CAMERA_GRACE_MS = 400;
@@ -89,8 +97,9 @@ async function main() {
   let hover: [number, number] | null = null;
   let started = false;
   let lastPopAt = 0;
-  let mode: 'sandbox' | 'battle' = 'sandbox';
+  let mode: 'sandbox' | 'battle' | 'siege' = 'sandbox';
   let battleStarted = false;
+  let siegeStarted = false;
   let sandboxCam = { x: 0, y: 0, zoom: 40 };
   let recordingReplay = false;
   let selecting = false;
@@ -144,12 +153,14 @@ async function main() {
     openHelp,
     share() {
       if (mode === 'battle') shareReplay();
+      else if (mode === 'siege') hud.toast('siege links are coming soon ~ record a replay to share it');
       else copyLink();
     },
     setMode(nextMode) {
       if (nextMode === mode) return;
       if (nextMode === 'sandbox') exitBattle();
-      else enterBattle();
+      else if (nextMode === 'battle') enterBattle();
+      else enterSiege();
     },
     cardDrag: {
       pick: () => {},
@@ -277,7 +288,12 @@ async function main() {
   function placeStampAt(x: number, y: number, keep: boolean) {
     if (!pattern) return;
     const pts = stampPoints(x, y);
-    if (mode === 'battle') {
+    if (mode === 'siege') {
+      const unit = siegeUnit(pts);
+      const problem = unit ? siege.placeUnit(unit, performance.now()) : 'limit';
+      if (problem) hud.toast(PROBLEM_TEXT[problem]);
+      else audio.pop(x, y);
+    } else if (mode === 'battle') {
       const problem = battle.placeStamp(pts, performance.now());
       if (problem === 'zone') hud.toast('keep it inside your zone ~');
       else if (problem === 'budget') hud.toast('not enough cells left for that one');
@@ -301,6 +317,12 @@ async function main() {
       refreshStatus();
     }
     if (!keep) selectPattern(null);
+  }
+
+  /** The siege unit the held stamp would place at these cells (only the six prefabs are units). */
+  function siegeUnit(points: [number, number][]) {
+    const id = UNIT_IDS.find((u: UnitId) => u === (pattern as { id?: string } | null)?.id);
+    return id && points.length ? stampAt(id, orientationOf(orientation), points) : null;
   }
 
   // Dragging a palette card onto the canvas (the canvas fills the window, so
@@ -351,7 +373,9 @@ async function main() {
     const status =
       mode === 'battle'
         ? `${battle.cfg.garden ? 'flowers' : 'territory'} red ${battle.sim.points.red} · blue ${battle.sim.points.blue} · generation ${battle.sim.generation}`
-        : `generation ${sim.generation} · ${sim.population} cells`;
+        : mode === 'siege'
+          ? `crystal hp red ${siege.state.red.hp} · blue ${siege.state.blue.hp} · generation ${siege.state.generation}`
+          : `generation ${sim.generation} · ${sim.population} cells`;
     ctx.fillText(status, pad, h - pad);
     ctx.restore();
   }
@@ -395,14 +419,15 @@ async function main() {
     if (recordingReplay) {
       recordingReplay = false;
       battle.slowFinale = false;
+      siege.slowFinale = false;
       recorder.setLimit(MAX_RECORD_SECONDS);
     }
     if (clipUrl) URL.revokeObjectURL(clipUrl);
     clipUrl = URL.createObjectURL(r.blob);
     // Prepare the URL before showing the result so its post button opens synchronously.
     const battleLink = mode === 'battle' ? battle.replayLink() : null;
-    const text = battleLink ? resultText() : POST_TEXT;
-    const url = battleLink ?? (sim.population ? await shareLink() : location.origin + location.pathname);
+    const text = battleLink ? resultText() : mode === 'siege' ? siegeResultText() : POST_TEXT;
+    const url = battleLink ?? (mode !== 'siege' && sim.population ? await shareLink() : location.origin + location.pathname);
     hud.showResult(clipUrl, r.ext, {
       download() {
         const a = document.createElement('a');
@@ -474,7 +499,8 @@ async function main() {
 
   const territoryView = new TerritoryView();
   const arenaView = new ArenaView();
-  view.underlay.addChild(territoryView.root, arenaView.root);
+  const crystalView = new CrystalView();
+  view.underlay.addChild(territoryView.root, arenaView.root, crystalView.root);
   let framedPhase = '';
   const battle = new BattleMode({
     changed() {
@@ -528,11 +554,51 @@ async function main() {
   }, hud.palette);
   battleHud.show(false);
 
+  const siege = new SiegeMode({
+    changed() {
+      siegeHud.render(siege);
+      syncPalette();
+      if (siege.phase !== 'deploy' && pattern) selectPattern(null);
+      if (mode === 'siege' && siege.phase !== framedPhase) fitArena();
+    },
+    births: (pts) => audio.births(pts),
+    finished(outcome) {
+      siegeHud.render(siege);
+      audio.fanfare(outcome.youWon !== false);
+      if (recordingReplay) setTimeout(() => recorder.recording && recorder.stop(), RESULT_HOLD_MS);
+    },
+  });
+  const siegeHud = new SiegeHud(document.getElementById('hud')!, {
+    ready() {
+      audio.unlock();
+      if (siege.units.length === 0) hud.toast(SIEGE_TEXT.emptyArmy);
+      siege.ready(performance.now());
+    },
+    random: () => siege.randomArmy(performance.now()),
+    clear: () => siege.clearArmy(performance.now()),
+    editArmy: () => siege.editArmy(performance.now()),
+    newOpponent: () => siege.newOpponent(performance.now()),
+    replay: () => siege.replay(performance.now()),
+    recordReplay,
+    togglePause: () => siege.togglePause(),
+    finishNow: () => siege.finishNow(performance.now()),
+    setSpeed: (v) => (siege.genPerSec = v),
+  }, hud.palette);
+  siegeHud.show(false);
+
   /** The shared palette: budget-greyed and only active while deploying in a battle. */
   function syncPalette() {
-    const deploying = mode === 'battle' && battle.phase === 'deploy';
-    hud.setBudget(deploying ? battle.budgetLeft : null);
+    const deploying = mode === 'battle' ? battle.phase === 'deploy' : mode === 'siege' && siege.phase === 'deploy';
+    hud.setBudget(mode === 'battle' && deploying ? battle.budgetLeft : null);
+    if (mode === 'siege') hud.setSiegeUnits(Object.fromEntries(UNIT_IDS.map((id) => [id, siege.unitsLeft(id)])) as Record<UnitId, number>);
     hud.setPaletteActive(mode === 'sandbox' || deploying);
+  }
+
+  function siegeResultText(): string {
+    const o = siege.outcome;
+    const vs = siege.opponent ? SAMPLE_NAMES[siege.opponent] : 'a sample army';
+    if (o?.youWon) return `my cells cracked the crystal of ${vs} 💎 #cutelife`;
+    return `a crystal siege in the Game of Life 💎 #cutelife`;
   }
 
   function resultText(): string {
@@ -553,11 +619,12 @@ async function main() {
   /** Frame the arena between the battle title and the bottom controls. */
   /** Frame the arena in the space the HUD panels leave free. */
   function fitArena() {
-    const { width, height } = battle.cfg;
-    framedPhase = battle.phase;
-    const a = battleHud.freeArea(cam.w, cam.h);
+    const arena = mode === 'siege' ? siege : battle;
+    const { width, height } = arena.cfg;
+    framedPhase = arena.phase;
+    const a = (mode === 'siege' ? siegeHud : battleHud).freeArea(cam.w, cam.h);
     cam.zoom = Math.max(2, Math.min((a.right - a.left) / width, (a.bottom - a.top) / height));
-    battle.sim.fitZoom = cam.zoom;
+    arena.sim.fitZoom = cam.zoom;
     const cx = (a.left + a.right) / 2;
     const cy = (a.top + a.bottom) / 2;
     cam.x = width / 2 - (cx - cam.w / 2) / cam.zoom;
@@ -575,6 +642,7 @@ async function main() {
     setSelecting(false);
     mode = 'battle';
     hud.setMode('battle');
+    siegeHud.show(false);
     battleHud.show(true);
     framedPhase = '';
     const keepStars = battle.opponent.kind === 'ai' ? battle.opponent.stars : 3;
@@ -589,12 +657,41 @@ async function main() {
     onboarding.modeChanged();
   }
 
+  function enterSiege() {
+    const t = performance.now();
+    stampAim = null;
+    if (mode === 'sandbox') {
+      sandboxCam = { x: cam.x, y: cam.y, zoom: cam.zoom };
+      setPlaying(false);
+    }
+    selectPattern(null);
+    setSelecting(false);
+    hud.closeResult();
+    mode = 'siege';
+    hud.setMode('siege');
+    battleHud.show(false);
+    siegeHud.show(true);
+    framedPhase = '';
+    // Like the garden battle: an unfinished siege resumes, a finished one starts afresh.
+    if (!siegeStarted || siege.phase === 'result') {
+      siegeStarted = true;
+      siege.start(t);
+    } else {
+      siegeHud.render(siege);
+      syncPalette();
+      fitArena();
+    }
+    onboarding.modeChanged();
+  }
+
+  /** Back to the sandbox from either battle mode. */
   function exitBattle() {
     selectPattern(null);
     mode = 'sandbox';
     syncPalette();
     hud.setMode('sandbox');
     battleHud.show(false);
+    siegeHud.show(false);
     hud.closeResult();
     Object.assign(cam, sandboxCam);
     if (fromChallengeHash(location.hash) || fromReplayHash(location.hash)) forgetSharedLink();
@@ -610,11 +707,12 @@ async function main() {
     }
     // The whole battle in one clip, slowing down for the last generations.
     recordingReplay = true;
-    recorder.setLimit(MAX_BATTLE_RECORD_SECONDS);
-    battle.genPerSec = RECORD_GEN_PER_SEC;
-    battle.slowFinale = true;
+    const arena = mode === 'siege' ? siege : battle;
+    recorder.setLimit(mode === 'siege' ? MAX_SIEGE_RECORD_SECONDS : MAX_BATTLE_RECORD_SECONDS);
+    arena.genPerSec = RECORD_GEN_PER_SEC;
+    arena.slowFinale = true;
     hud.setRecording(0, recorder.limit);
-    battle.replay(performance.now());
+    arena.replay(performance.now());
   }
 
   // ---- custom stamps -------------------------------------------------------
@@ -842,6 +940,11 @@ async function main() {
     cam,
     paint(x, y, value) {
       const now = performance.now();
+      if (mode === 'siege') {
+        // Units are placed whole; clicking (or dragging over) one picks it back up.
+        if (value !== true && siege.removeAt(x, y, now)) audio.poof();
+        return false;
+      }
       if (mode === 'battle') {
         const painted = battle.paint(x, y, now, value);
         if (painted !== null && now - lastPopAt > 90) {
@@ -873,7 +976,7 @@ async function main() {
       placeStampAt(x, y, keep);
       return true;
     },
-    hasStamp: () => pattern !== null && (mode === 'sandbox' || battle.phase === 'deploy'),
+    hasStamp: () => pattern !== null && (mode === 'sandbox' || (mode === 'siege' ? siege : battle).phase === 'deploy'),
     isSelect: () => mode === 'sandbox' && selecting,
     select(from, to, done) {
       selection = {
@@ -896,16 +999,17 @@ async function main() {
     togglePlay() {
       if (mode === 'sandbox') return togglePlay();
       audio.unlock();
-      if (battle.phase === 'deploy') battle.ready(performance.now());
-      else battle.togglePause();
+      const arena = mode === 'siege' ? siege : battle;
+      if (arena.phase === 'deploy') arena.ready(performance.now());
+      else arena.togglePause();
     },
     step() {
       if (mode === 'sandbox') stepOnce();
-      else battle.ready(performance.now());
+      else (mode === 'siege' ? siege : battle).ready(performance.now());
     },
     shuffle() {
       if (mode === 'sandbox') shuffle();
-      else battle.randomArmy(performance.now());
+      else (mode === 'siege' ? siege : battle).randomArmy(performance.now());
     },
     toggleHand,
     cancelStamp() {
@@ -966,14 +1070,14 @@ async function main() {
     cam.w = app.screen.width;
     cam.h = app.screen.height;
     view.resize(cam.w, cam.h);
-    if (mode === 'battle') fitArena();
+    if (mode !== 'sandbox') fitArena();
   });
 
   app.ticker.add(() => {
     const t = performance.now();
     perf.begin(t);
     if (perf.enabled) {
-      perf.cells = (mode === 'battle' && !welcome.active ? battle.sim : sim).cells.size;
+      perf.cells = (welcome.active || mode === 'sandbox' ? sim : mode === 'siege' ? siege.sim : battle.sim).cells.size;
       if (!welcome.active) perf.quality = mode;
     }
     if (welcome.active) {
@@ -981,6 +1085,7 @@ async function main() {
       selectionGfx.clear();
       territoryView.update(cam, null);
       arenaView.update(cam, null, { showZones: [] });
+      crystalView.update(cam, null, false, t);
       view.update(welcome.renderTime(t), sim, cam, null, true);
       return;
     }
@@ -990,6 +1095,25 @@ async function main() {
       advance();
       perf.end('sim/bake playback', timing);
     }
+    if (mode === 'siege') {
+      const timing = perf.start();
+      siege.update(t);
+      perf.end('sim/bake playback', timing);
+      selectionGfx.clear();
+      territoryView.update(cam, null);
+      arenaView.update(cam, siege.layout(), siege.arenaState());
+      const deploying = siege.phase === 'deploy';
+      crystalView.update(cam, siege.crystals(), deploying, t);
+      let ghost = null;
+      if (pattern && hover && deploying) {
+        const points = stampPoints(hover[0], hover[1]);
+        const unit = siegeUnit(points);
+        ghost = { points, team: siege.myTeam, invalid: !unit || siege.unitProblem(unit) !== null };
+      }
+      view.update(t, siege.sim, cam, ghost, deploying);
+      return;
+    }
+    crystalView.update(cam, null, false, t);
     if (mode === 'battle') {
       const timing = perf.start();
       battle.update(t);
@@ -1062,7 +1186,7 @@ async function main() {
   } else onboarding.start(Boolean(shared || offered || challenge || replayLink));
 
   // Handy for debugging and for future screenshot tooling.
-  Object.assign(window, { cuteLife: { sim, cam, togglePlay, stepOnce, battle, enterBattle } });
+  Object.assign(window, { cuteLife: { sim, cam, togglePlay, stepOnce, battle, enterBattle, siege, enterSiege } });
 }
 
 main();

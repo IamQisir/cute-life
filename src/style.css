@@ -661,3 +661,24 @@ html, body {
   .score-gen { font-size: 13px; }
 }
 .hint { white-space: pre-line; }
+
+/* ---- crystal siege ----------------------------------------------------- */
+/* Siege swaps the palette's catalogue for its six units. */
+.siege-area { display: none; }
+#hud.siege .siege-area { display: contents; }
+#hud.siege .palette > .pal-section, #hud.siege .custom-area { display: none; }
+.card .left { font-size: 13px; color: var(--ink-soft); }
+.hp-row { display: flex; align-items: center; gap: 10px; }
+.hp-bar {
+  flex: 1;
+  height: 14px;
+  background: #ebe3d4;
+  border: 1.6px solid var(--ink);
+  border-radius: var(--sketch);
+  overflow: hidden;
+  display: flex;
+}
+.hp-bar .fill { height: 100%; transition: width 0.2s ease; }
+.hp-bar.red { justify-content: flex-end; }
+.hp-bar.red .fill { background: #ec8f7b; }
+.hp-bar.blue .fill { background: #9fb4e6; }

@@ -9,11 +9,12 @@ describe('top bar controls', () => {
     expect(new Set([...TOOLBAR_ITEMS, ...SETTINGS_ITEMS]).size).toBe(8);
     expect(settingsItems('sandbox')).toEqual(['sound', 'select', 'move']);
     expect(settingsItems('battle')).toEqual(['sound']);
+    expect(settingsItems('siege')).toEqual(['sound']);
   });
 
   it('supplies sketch paths for every control, mode and sound state', () => {
     expect(Object.keys(ICONS)).toEqual([
-      'sandbox', 'battle', 'record', 'share', 'follow', 'select', 'move',
+      'sandbox', 'battle', 'siege', 'record', 'share', 'follow', 'select', 'move',
       'soundAll', 'soundMusic', 'soundOff', 'help', 'settings', 'rotate', 'flip',
     ]);
     for (const paths of Object.values(ICONS)) {
@@ -37,5 +38,6 @@ describe('top bar controls', () => {
     expect(activeToolLabel(false, true, 'sandbox')).toBe('move');
     expect(activeToolLabel(true, true, 'sandbox')).toBe('select + move');
     expect(activeToolLabel(true, true, 'battle')).toBe('');
+    expect(activeToolLabel(true, true, 'siege')).toBe('');
   });
 });

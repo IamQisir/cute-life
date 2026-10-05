@@ -93,6 +93,8 @@ export class WelcomeShow {
   }
 
   get active() { return this.overlay !== null; }
+  /** The opaque intro video fills the screen, so the stage under it need not be drawn. */
+  get covering() { return this.active && !this.gated && !this.final && !this.closing && this.video !== null && !this.video.hidden; }
   /** Only reduced motion and the choice card freeze the live renderer. */
   renderTime(now: number) { return this.reduced || this.final || this.closing ? this.frozenAt : now; }
 

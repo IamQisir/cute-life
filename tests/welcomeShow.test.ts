@@ -185,6 +185,16 @@ describe('welcome video modal flow', () => {
     expect(f.sim.cells).toBe(f.cells);
   });
 
+  it('reports covering only while the video plays, so the stage under it can rest', () => {
+    const f = fixture();
+    expect(f.show.covering).toBe(false);
+    f.button('▶ tap to begin').click();
+    expect(f.show.covering).toBe(true);
+    f.video.dispatch('ended', event(f.video));
+    expect(f.show.covering).toBe(false);
+    expect(fixture(true).show.covering).toBe(false);
+  });
+
   it('timed out playback goes to choices; playing clears the timeout and a stall starts a new one', () => {
     const f = fixture();
     f.button('▶ tap to begin').click();

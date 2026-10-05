@@ -10,6 +10,18 @@ export const INTRO_CODECS = [
   { id: 'h264', file: 'mp4', type: 'video/mp4; codecs="avc1.640032, mp4a.40.2"' },
 ] as const;
 
+/**
+ * Phones and small tablets get 1080p at 30 fps (HEVC, else H.264): the full
+ * 1440p/60 encode is ~3.6× the pixels per second and froze, then jumped
+ * ahead, on phones. No AV1 here: Firefox falls back to H.264.
+ */
+export const SMALL_INTRO_CODECS = [
+  { id: 'small-hevc', file: 'mp4', type: 'video/mp4; codecs="hvc1.1.6.L120.B0, mp4a.40.2"' },
+  { id: 'small-h264', file: 'mp4', type: 'video/mp4; codecs="avc1.640028, mp4a.40.2"' },
+] as const;
+/** Viewports whose long side is at most this many CSS pixels count as small. */
+export const SMALL_INTRO_MAX_SIDE = 1024;
+
 type CanPlay = (type: string) => string;
 const browserCanPlay: CanPlay = (type) => {
   if (typeof document === 'undefined') return '';
@@ -18,13 +30,14 @@ const browserCanPlay: CanPlay = (type) => {
 };
 
 /**
- * Pure runtime decisions, shared with tests. Square viewports use landscape.
- * The first codec the browser can play wins (HEVC, then AV1, then H.264);
- * H.264 is the fallback when nothing answers.
+ * Pure runtime decisions, shared with tests. Square viewports use landscape;
+ * small viewports use the 1080p/30 set. The first codec the browser can play
+ * wins; the set's H.264 is the fallback when nothing answers.
  */
 export function introSource(width: number, height: number, base = '/', canPlay: CanPlay = browserCanPlay) {
   const format = width / height < 1 ? 'portrait' : 'landscape';
-  const codec = INTRO_CODECS.find((c) => canPlay(c.type) !== '') ?? INTRO_CODECS[INTRO_CODECS.length - 1];
+  const codecs = Math.max(width, height) <= SMALL_INTRO_MAX_SIDE ? SMALL_INTRO_CODECS : INTRO_CODECS;
+  const codec = codecs.find((c) => canPlay(c.type) !== '') ?? codecs[codecs.length - 1];
   return { video: `${base}intro/intro-${format}-${codec.id}.${codec.file}`, poster: `${base}intro/intro-${format}.jpg` };
 }
 export function introState(reduced: boolean, event: 'begin' | 'failure' | 'ended' | 'skip') {

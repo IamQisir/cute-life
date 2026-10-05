@@ -57,7 +57,8 @@ describe('virtual intro frames', () => {
 
 describe('intro playback decisions', () => {
   const only = (id: string) => (type: string) => type.includes(id) ? 'probably' : '';
-  it('picks the first playable codec: AV1, then HEVC, then H.264', () => {
+  it('picks the first playable codec: HEVC, then AV1, then H.264', () => {
+    expect(introSource(1920, 1080, '/', (t) => t.includes('avc1') ? '' : 'maybe').video).toBe('/intro/intro-landscape-hevc.mp4');
     expect(introSource(1920, 1080, '/', only('av01')).video).toBe('/intro/intro-landscape-av1.webm');
     expect(introSource(1920, 1080, '/', only('hvc1')).video).toBe('/intro/intro-landscape-hevc.mp4');
     expect(introSource(1920, 1080, '/', only('avc1')).video).toBe('/intro/intro-landscape-h264.mp4');

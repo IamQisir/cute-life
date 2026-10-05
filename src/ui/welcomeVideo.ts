@@ -1,7 +1,12 @@
-/** The runtime picks the first source the browser can play. Kept here so the trailer code stays out of the main bundle. */
+/**
+ * The runtime picks the first source the browser can play. HEVC first: at
+ * ~10 MB it is the sharpest per byte and hardware-decoded by Safari, Chrome
+ * and Edge on macOS and Windows; AV1 mostly serves Firefox; H.264 is the
+ * fallback. Kept here so the trailer code stays out of the main bundle.
+ */
 export const INTRO_CODECS = [
-  { id: 'av1', file: 'webm', type: 'video/webm; codecs="av01.0.08M.08, opus"' },
   { id: 'hevc', file: 'mp4', type: 'video/mp4; codecs="hvc1.1.6.L150.B0, mp4a.40.2"' },
+  { id: 'av1', file: 'webm', type: 'video/webm; codecs="av01.0.08M.08, opus"' },
   { id: 'h264', file: 'mp4', type: 'video/mp4; codecs="avc1.640032, mp4a.40.2"' },
 ] as const;
 
@@ -14,7 +19,7 @@ const browserCanPlay: CanPlay = (type) => {
 
 /**
  * Pure runtime decisions, shared with tests. Square viewports use landscape.
- * The first codec the browser can play wins (AV1, then HEVC, then H.264);
+ * The first codec the browser can play wins (HEVC, then AV1, then H.264);
  * H.264 is the fallback when nothing answers.
  */
 export function introSource(width: number, height: number, base = '/', canPlay: CanPlay = browserCanPlay) {

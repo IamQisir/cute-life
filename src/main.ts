@@ -356,8 +356,8 @@ async function main() {
   let shownSecond = -1;
 
   /** Builds a link to the current scene. Leaves the address bar alone. */
-  function shareLink(): string {
-    const hash = toHash({ points: toList(sim.cells), cam: { x: cam.x, y: cam.y, zoom: cam.zoom } });
+  async function shareLink(): Promise<string> {
+    const hash = await toHash({ points: toList(sim.cells), cam: { x: cam.x, y: cam.y, zoom: cam.zoom } });
     return location.origin + location.pathname + hash;
   }
 
@@ -369,21 +369,16 @@ async function main() {
     if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   }
 
-  async function copyLink() {
+  function copyLink() {
     if (sim.population === 0) {
       hud.toast('draw some cells first, then share them!');
       return;
     }
-    const link = shareLink();
-    try {
-      await navigator.clipboard.writeText(link);
-      hud.toast(link.length > LONG_LINK ? 'link copied! (it is a big one)' : 'link copied ~ paste it anywhere!');
-    } catch {
-      window.prompt('copy this link:', link);
-    }
+    return copyText(shareLink(), (link) =>
+      link.length > LONG_LINK ? 'link copied! (it is a big one)' : 'link copied ~ paste it anywhere!');
   }
 
-  function onRecorded(r: Recording) {
+  async function onRecorded(r: Recording) {
     restoreRecordedFollow();
     hud.setRecording(null, MAX_RECORD_SECONDS);
     shownSecond = -1;
@@ -394,6 +389,10 @@ async function main() {
     }
     if (clipUrl) URL.revokeObjectURL(clipUrl);
     clipUrl = URL.createObjectURL(r.blob);
+    // Prepare the URL before showing the result so its post button opens synchronously.
+    const battleLink = mode === 'battle' ? battle.replayLink() : null;
+    const text = battleLink ? resultText() : POST_TEXT;
+    const url = battleLink ?? (sim.population ? await shareLink() : location.origin + location.pathname);
     hud.showResult(clipUrl, r.ext, {
       download() {
         const a = document.createElement('a');
@@ -403,9 +402,6 @@ async function main() {
       },
       copyLink,
       post() {
-        const battleLink = mode === 'battle' ? battle.replayLink() : null;
-        const url = battleLink ?? (sim.population ? shareLink() : location.origin + location.pathname);
-        const text = battleLink ? resultText() : POST_TEXT;
         const intent = `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
         window.open(intent, '_blank', 'noopener');
       },
@@ -443,12 +439,24 @@ async function main() {
     setFollowing(previous);
   }
 
-  async function copyText(text: string, ok: string) {
+  async function copyText(text: string | Promise<string>, ok: string | ((text: string) => string)) {
+    const pendingText = Promise.resolve(text);
+    const done = async () => hud.toast(typeof ok === 'string' ? ok : ok(await pendingText));
     try {
-      await navigator.clipboard.writeText(text);
-      hud.toast(ok);
+      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        // Safari needs write() during the gesture, before awaiting compression.
+        const blob = pendingText.then((value) => new Blob([value], { type: 'text/plain' }));
+        try {
+          await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]);
+          return await done();
+        } catch {
+          // Some browsers reject promised ClipboardItems; plain text may still work.
+        }
+      }
+      await navigator.clipboard.writeText(await pendingText);
+      await done();
     } catch {
-      window.prompt('copy this link:', text);
+      window.prompt('copy this link:', await pendingText);
     }
   }
 
@@ -915,7 +923,7 @@ async function main() {
 
   // Parse every link before seeding: stamp/challenge/replay are handled later.
   const now = performance.now();
-  const shared = fromHash(location.hash);
+  const shared = await fromHash(location.hash);
   const offered = fromStampHash(location.hash);
   const challenge = fromChallengeHash(location.hash);
   const replayLink = fromReplayHash(location.hash);

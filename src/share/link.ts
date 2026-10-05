@@ -1,26 +1,39 @@
 import { encodeRle, iterateRlePoints } from './rle';
+import { compressRle, decompressRle } from './compress';
 
 export interface SharedState {
   points: [number, number][];
   cam?: { x: number; y: number; zoom: number };
 }
 
-export const LINK_VERSION = 1;
+export const LINK_VERSION = 2;
 const MAX_POINTS = 200000;
 /** engine.key() packs coordinates safely only below 2^20; stay well inside. */
 const MAX_COORD = 500000;
 
-export function toHash(state: SharedState): string {
+export async function toHash(state: SharedState): Promise<string> {
   const { rle, x, y } = encodeRle(state.points);
   const params = new URLSearchParams({
-    v: String(LINK_VERSION), p: rle, ox: String(x), oy: String(y),
+    v: '1', p: rle, ox: String(x), oy: String(y),
   });
   if (state.cam && [state.cam.x, state.cam.y, state.cam.zoom].every(Number.isFinite)) {
     params.set('cx', String(Number(state.cam.x.toFixed(2))));
     params.set('cy', String(Number(state.cam.y.toFixed(2))));
     params.set('z', String(Number(state.cam.zoom.toFixed(2))));
   }
-  return `#${params.toString()}`;
+  const legacy = `#${params.toString()}`;
+  try {
+    const data = await compressRle(rle);
+    const compressed = new URLSearchParams({ v: String(LINK_VERSION), d: data });
+    for (const [name, value] of params) {
+      if (name !== 'v' && name !== 'p') compressed.set(name, value);
+    }
+    const hash = `#${compressed.toString()}`;
+    return hash.length < legacy.length ? hash : legacy;
+  } catch {
+    // Older browsers may lack CompressionStream or raw-deflate support.
+    return legacy;
+  }
 }
 
 function numberParam(params: URLSearchParams, name: string): number | undefined {
@@ -35,10 +48,24 @@ function originParam(params: URLSearchParams, name: string): number {
   return value !== undefined && Number.isSafeInteger(value) ? value : 0;
 }
 
-export function fromHash(hash: string): SharedState | null {
+export async function fromHash(hash: string): Promise<SharedState | null> {
   const params = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
-  const rle = params.get('p');
-  if (params.get('v') !== String(LINK_VERSION) || rle === null) return null;
+  let rle: string;
+  if (params.get('v') === '1') {
+    const payload = params.get('p');
+    if (payload === null) return null;
+    rle = payload;
+  } else if (params.get('v') === String(LINK_VERSION)) {
+    const data = params.get('d');
+    if (data === null) return null;
+    try {
+      rle = await decompressRle(data);
+    } catch {
+      return null;
+    }
+  } else {
+    return null;
+  }
 
   const points: [number, number][] = [];
   for (const point of iterateRlePoints(rle, originParam(params, 'ox'), originParam(params, 'oy'))) {

@@ -1,6 +1,6 @@
 # cute life
 
-[![CI](https://github.com/IamQisir/cute-life/actions/workflows/ci.yml/badge.svg)](https://github.com/IamQisir/cute-life/actions/workflows/ci.yml)
+[![CI](https://github.com/chyisell/cute-life/actions/workflows/ci.yml/badge.svg)](https://github.com/chyisell/cute-life/actions/workflows/ci.yml)
 
 A cosy, hand-drawn Game of Life on an infinite sheet of paper, where every cell
 has feelings. **[Play it in your browser →](https://cute-life.iamqisir.workers.dev)**
@@ -110,3 +110,8 @@ Patterns: the famous structures in `src/life/catalog/` are RLE files from the
 kept in each file's `#O` / `#C` lines), mirrored by
 [copy.sh/life](https://copy.sh/life/). Each one's behaviour (period, speed,
 emitted gliders) is verified against this engine in `tests/catalog.test.ts`.
+
+## License
+
+[MIT](LICENSE) © 2026 Tim Chyisell. The fonts and the LifeWiki pattern files
+credited above keep their own licenses and attributions.

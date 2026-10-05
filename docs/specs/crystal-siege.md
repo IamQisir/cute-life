@@ -290,6 +290,11 @@ eater stops it, and an equal-budget assault can contest that eater.*
    measure visible/headless parity, worker performance and phone playback.
    Finite searches at one certified port do not prove universal counterplay.
 
+6. **Capture vs HP — open**: owner-colour base painting is available as a
+   headless experiment alongside unchanged HP scoring. See
+   [Capture rule (owner proposal)](crystal-siege-experiments.md#capture-rule-owner-proposal)
+   for the sweep, release gates, ash/timeout limitations, and proposed parameters.
+
 ## References
 - LifeWiki: [Gosper glider gun](https://conwaylife.com/wiki/Gosper_glider_gun),
   [Eater 1](https://conwaylife.com/wiki/Eater_1),

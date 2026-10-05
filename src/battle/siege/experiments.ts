@@ -18,8 +18,8 @@ export const BREACH_ESCORT: Stamp[] = [
 ];
 export interface Table { title: string; headers: string[]; rows: (string | number | null)[][] }
 export interface ExperimentReport { tables: Table[]; gate: boolean; recipes: Record<string, Stamp[]> }
-const textRecipe = (units: Stamp[]): string => units.map(u => `${u.id}@${u.x},${u.y}/o${u.orientation ?? 0}`).join('; ');
-const percent = (n: number, d: number): string => `${n}/${d} (${d ? (100*n/d).toFixed(1) : '0.0'}%)`;
+export const textRecipe = (units: Stamp[]): string => units.map(u => `${u.id}@${u.x},${u.y}/o${u.orientation ?? 0}`).join('; ');
+export const percent = (n: number, d: number): string => `${n}/${d} (${d ? (100*n/d).toFixed(1) : '0.0'}%)`;
 const metrics = (s: SiegeState): (number | string | null)[] => [s.blue.firstContact, s.blue.killGen, DEFAULT_RULES.hp - s.blue.hp, s.blue.units, s.red.hp];
 function localCounts(grid: Grid, box: Rect, team: Team, width = 128): number {
   let n = 0;
@@ -33,7 +33,7 @@ function coreEqual(a: Grid, b: Grid): boolean {
   for(let y=4;y<=39;y++)for(let x=51;x<=59;x++)if(a[y*128+x]!==b[y*128+x])return false;
   return true;
 }
-function legal(r: SiegeRules,p:Prefabs,team:Team,units:Stamp[]): boolean {
+export function legal(r: SiegeRules,p:Prefabs,team:Team,units:Stamp[]): boolean {
   try { validateArmy(r,p,team,units); return true; } catch(e) { if(e instanceof RangeError)return false; throw e; }
 }
 export function mirrorArmy(p: Prefabs, units: Stamp[]): Stamp[] {
@@ -79,6 +79,34 @@ export function lateStreamComparison(p: Prefabs, escort: Stamp[]) {
     if (equal) streamMatches++;
   }
   return { coreMatches, streamMatches, generations: 320, bluePopulation: population(combined.grid).blue };
+}
+
+export function* trains(count:number):Generator<Stamp[]> {
+  for(const o of [2,4] as Orientation[])for(const spacing of [7,10,14])for(const shift of [0,2,4,6,8])for(const stagger of [-6,-3,0,3,6])for(let lane=22;lane<=62;lane++){
+    yield Array.from({length:count},(_,i)=>({id:'lwss',x:4+shift+i*spacing,y:lane+(i%2)*stagger,orientation:o}));
+  }
+}
+
+export function* mixed(kind:'glider'|'growth'|'blocks'):Generator<Stamp[]> {
+  for(const o of [2,4] as Orientation[])for(const spacing of [10,14])for(const shift of [0,4,8])for(let lane=26;lane<=54;lane++)for(const delta of [-8,-4,0,4,8]){
+    const ships:Stamp[]=Array.from({length:kind==='glider'?3:2},(_,i)=>({id:'lwss',x:4+shift+i*spacing,y:lane,orientation:o}));
+    if(kind==='glider')ships.push({id:'glider',x:54,y:lane+delta,orientation:0},{id:'block',x:50,y:lane+delta-6});
+    if(kind==='growth')ships.push({id:'rpentomino',x:54,y:lane+delta},{id:'rpentomino',x:48,y:lane+delta-8},{id:'block',x:44,y:lane+delta+6});
+    if(kind==='blocks')for(let i=0;i<4;i++)ships.push({id:'block',x:50-i*6,y:lane+delta});
+    yield ships;
+  }
+}
+
+export function* gliders():Generator<Stamp[]> {
+  for(const o of [0,3,6,7] as Orientation[])for(const gap of [4,6,8])for(let y=4;y<=78;y+=2)for(const x of [20,28,36]){
+    yield Array.from({length:7},(_,i)=>({id:'glider',x:x+(i%2)*6,y:y+Math.floor(i/2)*gap,orientation:o}));
+  }
+}
+
+export function* whole():Generator<Stamp[]> {
+  for(const o of [2,4] as Orientation[])for(const spacing of [7,10,14])for(const shift of [0,4,8])for(const separation of [6,10,14])for(let y=20;y<=58;y+=2){
+    yield Array.from({length:8},(_,i)=>({id:'lwss',x:4+shift+(i%4)*spacing,y:y+Math.floor(i/4)*separation,orientation:o}));
+  }
 }
 
 /** Exhaustive finite Cartesian searches; success means exposure, kill means <=640. No random sampling. */
@@ -165,35 +193,11 @@ export function runExperiments(p: Prefabs, extraRle: {snark:string;buckaroo:stri
     recipes[label]=localBest;
     if(localIntactState)recipes[`${label} intact gun`]=localIntact;
   };
-  function* trains(count:number):Generator<Stamp[]> {
-    for(const o of [2,4] as Orientation[])for(const spacing of [7,10,14])for(const shift of [0,2,4,6,8])for(const stagger of [-6,-3,0,3,6])for(let lane=22;lane<=62;lane++){
-      yield Array.from({length:count},(_,i)=>({id:'lwss',x:4+shift+i*spacing,y:lane+(i%2)*stagger,orientation:o}));
-    }
-  }
   assess('4 LWSS + gun',trains(4),true,[UPPER_EATER]);
   progress('Mixed escorts and whole-budget attacks');
-  function* mixed(kind:'glider'|'growth'|'blocks'):Generator<Stamp[]> {
-    for(const o of [2,4] as Orientation[])for(const spacing of [10,14])for(const shift of [0,4,8])for(let lane=26;lane<=54;lane++)for(const delta of [-8,-4,0,4,8]){
-      const ships:Stamp[]=Array.from({length:kind==='glider'?3:2},(_,i)=>({id:'lwss',x:4+shift+i*spacing,y:lane,orientation:o}));
-      if(kind==='glider')ships.push({id:'glider',x:54,y:lane+delta,orientation:0},{id:'block',x:50,y:lane+delta-6});
-      if(kind==='growth')ships.push({id:'rpentomino',x:54,y:lane+delta},{id:'rpentomino',x:48,y:lane+delta-8},{id:'block',x:44,y:lane+delta+6});
-      if(kind==='blocks')for(let i=0;i<4;i++)ships.push({id:'block',x:50-i*6,y:lane+delta});
-      yield ships;
-    }
-  }
   for(const kind of ['glider','growth','blocks'] as const)assess(`${kind} escort + gun`,mixed(kind),true,[UPPER_EATER]);
-  function* gliders():Generator<Stamp[]> {
-    for(const o of [0,3,6,7] as Orientation[])for(const gap of [4,6,8])for(let y=4;y<=78;y+=2)for(const x of [20,28,36]){
-      yield Array.from({length:7},(_,i)=>({id:'glider',x:x+(i%2)*6,y:y+Math.floor(i/2)*gap,orientation:o}));
-    }
-  }
   assess('7 gliders + gun',gliders(),true,[UPPER_EATER]);
   // Two rails of four ships; longitudinal spacing also changes arrival time by 2*spacing generations.
-  function* whole():Generator<Stamp[]> {
-    for(const o of [2,4] as Orientation[])for(const spacing of [7,10,14])for(const shift of [0,4,8])for(const separation of [6,10,14])for(let y=20;y<=58;y+=2){
-      yield Array.from({length:8},(_,i)=>({id:'lwss',x:4+shift+(i%4)*spacing,y:y+Math.floor(i/4)*separation,orientation:o}));
-    }
-  }
   assess('8 LWSS vs upper gun+eater (interference)',whole(),false,[...mirrorArmy(p,[UPPER_GUN]),UPPER_EATER]);
   assess('8 LWSS vs lower gun+eater',whole(),false,[...mirrorArmy(p,[LOWER_GUN]),UPPER_EATER]);
   const block:Stamp={id:'block',x:69,y:35};

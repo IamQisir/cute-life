@@ -5,6 +5,7 @@ import { Container, Graphics, Text, TilingSprite } from 'pixi.js';
 import type { Camera } from './camera';
 import { TEAM_PALETTES, drawHatch } from './cellArt';
 import { cellHash, tex } from './util';
+import type { DeployRect } from '../battle/arena';
 
 export interface ArenaLayout {
   width: number;
@@ -12,7 +13,7 @@ export interface ArenaLayout {
   /** Edges that wrap are drawn dashed; walls are solid. */
   wrapX: boolean;
   wrapY: boolean;
-  zones: Record<1 | 2, { x0: number; x1: number }>;
+  zones: Record<1 | 2, DeployRect[]>;
 }
 
 export interface ArenaViewState {
@@ -61,7 +62,7 @@ export class ArenaView {
   update(cam: Camera, layout: ArenaLayout | null, state: ArenaViewState) {
     this.root.visible = layout !== null;
     if (!layout) return;
-    const sig = `${cam.x},${cam.y},${cam.zoom},${cam.w},${cam.h},${state.showZones.join()},${state.hiddenZone},${layout.wrapX},${layout.wrapY}`;
+    const sig = `${cam.x},${cam.y},${cam.zoom},${cam.w},${cam.h},${state.showZones.join()},${state.hiddenZone},${JSON.stringify(layout)}`;
     if (sig === this.sig) return;
     this.sig = sig;
 
@@ -77,7 +78,7 @@ export class ArenaView {
       .rect(ax1, ay0, Math.max(0, cam.w - ax1), ay1 - ay0)
       .fill({ color: PAPER, alpha: 0.6 });
 
-    // Zones: a pale wash plus hatching, masked to the zone rectangle.
+    // Zones: a pale wash plus hatching, masked to the half minus the garden.
     const z = this.zoneFill;
     z.clear();
     for (const team of [1, 2] as const) {
@@ -87,11 +88,13 @@ export class ArenaView {
       hatch.visible = on;
       mask.clear();
       if (!on) continue;
-      const { x0, x1 } = layout.zones[team];
-      const [sx0] = cam.toScreen(x0, 0);
-      const [sx1] = cam.toScreen(x1 + 1, 0);
-      z.rect(sx0, ay0, sx1 - sx0, ay1 - ay0).fill({ color: hex(TEAM_PALETTES[team].body), alpha: 0.35 });
-      mask.rect(sx0, ay0, sx1 - sx0, ay1 - ay0).fill({ color: 0xffffff });
+      for (const { x0, x1, y0, y1 } of layout.zones[team]) {
+        const [sx0, sy0] = cam.toScreen(x0, y0);
+        const [sx1, sy1] = cam.toScreen(x1 + 1, y1 + 1);
+        z.rect(sx0, sy0, sx1 - sx0, sy1 - sy0).fill({ color: hex(TEAM_PALETTES[team].body), alpha: 0.35 });
+        mask.rect(sx0, sy0, sx1 - sx0, sy1 - sy0);
+      }
+      mask.fill({ color: 0xffffff });
       hatch.width = cam.w;
       hatch.height = cam.h;
       hatch.tilePosition.set(-cam.x * cam.zoom * (team === 1 ? 1 : -1), -cam.y * cam.zoom);
@@ -130,8 +133,13 @@ export class ArenaView {
     const q = this.question;
     q.visible = state.hiddenZone !== undefined;
     if (state.hiddenZone !== undefined) {
-      const { x0, x1 } = layout.zones[state.hiddenZone];
-      const [cx, cy] = cam.toScreen((x0 + x1 + 1) / 2, layout.height / 2);
+      const zones = layout.zones[state.hiddenZone];
+      const area = (r: DeployRect) => (r.x1 - r.x0 + 1) * (r.y1 - r.y0 + 1);
+      const zone = zones.reduce<DeployRect | undefined>((best, r) => !best || area(r) > area(best) ? r : best, undefined);
+      q.visible = zone !== undefined;
+      if (!zone) return;
+      const { x0, x1, y0, y1 } = zone;
+      const [cx, cy] = cam.toScreen((x0 + x1 + 1) / 2, (y0 + y1 + 1) / 2);
       q.position.set(cx, cy);
       q.style.fill = hex(TEAM_PALETTES[state.hiddenZone].outline);
       q.scale.set(Math.max(0.3, (cam.zoom * layout.height) / 120 / 3));

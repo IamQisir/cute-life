@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BattleMode } from '../src/battle/mode';
-import { ARENA_PRESETS, BLUE, RED, deployZone, validateDeployment } from '../src/battle/arena';
+import { ARENA_PRESETS, BLUE, RED, deployZone, deployZoneRects, validateDeployment } from '../src/battle/arena';
 import { readArenaSize, rememberArenaSize } from '../src/battle/arenaPreference';
 import { fromChallengeHash, fromReplayHash } from '../src/battle/challenge';
 import { orientPoints } from '../src/life/orientation';
@@ -101,7 +101,7 @@ describe('AI arena preference and battle flow', () => {
     expect(b.budgetLeft).toBe(176);
     expect(b.placeStamp(points, 2)).toBeNull();
     expect(b.budgetLeft).toBe(176);
-    expect(b.stampProblem(shape.map(([x, y]) => [x + 54, y + 3]))).toBe('zone');
+    expect(b.stampProblem(shape.map(([x, y]) => [x + 58, y + 3]))).toBe('zone');
     b.randomArmy(3);
     expect(b.stampProblem([[53, 71], [52, 71], [51, 71], [50, 71], [49, 71]])).toBe('budget');
     b.enemy = [[deployZone(b.cfg, BLUE).x0, 1]];
@@ -111,5 +111,33 @@ describe('AI arena preference and battle flow', () => {
     b.start({ kind: 'replay', red: replay.red, blue: replay.blue, size: 'huge', rules: 'garden' }, 4);
     b.finishNow(5);
     expect(b.phase).toBe('result');
+  });
+});
+
+describe('garden deployment input and overlay layout', () => {
+  it.each([RED, BLUE] as const)('uses the same shape for painting, stamp hover/placement and highlighting (team %i)', (team) => {
+    const b = new BattleMode(hooks());
+    b.myTeam = team;
+    const g = b.cfg.garden!;
+    const z = deployZone(b.cfg, team);
+    const x = team === RED ? z.x1 : z.x0;
+    const accepted: [number, number][] = [[x, g.y0 - 1], [x, g.y1 + 1]];
+    expect(b.layout().zones[team]).toEqual(deployZoneRects(b.cfg, team));
+    expect(b.arenaState().showZones).toEqual([team]);
+    expect(b.stampProblem(accepted)).toBeNull();
+    expect(b.paint(...accepted[0], 0)).toBe(true);
+    expect(b.placeStamp(accepted, 1)).toBeNull();
+    expect(b.army).toEqual(accepted);
+    for (const point of [[x, g.y0], [x, g.y1], [x, -1], [x, b.cfg.height],
+      ...Array.from({ length: 4 }, (_, i) => [b.cfg.width / 2 - 2 + i, 0]),
+      [team === RED ? deployZone(b.cfg, BLUE).x0 : deployZone(b.cfg, RED).x1, 0]] as [number, number][]) {
+      const before = b.army;
+      expect(b.paint(...point, 2)).toBeNull();
+      expect(b.stampProblem([accepted[0], point])).toBe('zone');
+      expect(b.placeStamp([accepted[0], point], 3)).toBe('zone');
+      expect(b.army).toBe(before);
+    }
+    b.phase = 'reveal';
+    expect(b.arenaState().showZones).toEqual([RED, BLUE]);
   });
 });

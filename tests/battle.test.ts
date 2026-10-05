@@ -533,7 +533,7 @@ describe('AI uses the whole palette', () => {
 
 
 describe('garden rules', () => {
-  it('uses garden small by default and keeps each garden entirely in the neutral deployment gap', () => {
+  it('uses garden small by default and keeps the existing simulation presets', () => {
     expect(DEFAULT_ARENA).toBe(ARENA_PRESETS.small);
     const expected = {
       small: [28, 20, 20, 150, 3, 11, 16, 7, 12],
@@ -547,8 +547,6 @@ describe('garden rules', () => {
       const garden = cfg.garden!;
       expect([cfg.width, cfg.height, cfg.budget, cfg.generations, cfg.buffer,
         garden.x0, garden.x1, garden.y0, garden.y1]).toEqual(expected[size]);
-      expect(garden.x0).toBeGreaterThan(deployZone(cfg, RED).x1);
-      expect(garden.x1).toBeLessThan(deployZone(cfg, BLUE).x0);
       expect(garden.y0).toBeGreaterThanOrEqual(0);
       expect(garden.y1).toBeLessThan(cfg.height);
       expect(cfg).toMatchObject({ wrapX: false, wrapY: true, endOnExtinction: true });
@@ -582,18 +580,18 @@ describe('garden rules', () => {
     expect(simulateBattle(cfg, [], glider).generations).toBe(0);
     expect(simulateBattle({ ...cfg, endOnExtinction: false }, [[1, 1]], glider).generations).toBeGreaterThan(1);
     // A birth in the objective on the extinction step still counts.
-    const custom = { ...LEGACY_PRESETS.small, garden: { x0: 4, x1: 4, y0: 3, y1: 5 }, endOnExtinction: true };
+    const custom = { ...LEGACY_PRESETS.small, garden: { x0: 4, x1: 4, y0: 3, y1: 3 }, endOnExtinction: true };
     expect(simulateBattle(custom, [[3, 4], [4, 4], [5, 4]], [[20, 1]])).toMatchObject({
-      generations: 1, winner: 'red', score: { red: 3, blue: 0 },
+      generations: 1, winner: 'red', score: { red: 1, blue: 0 },
     });
   });
 
   it('still stops a settled garden board and reports score throughout history', () => {
-    const cfg = { ...DEFAULT_ARENA, garden: { x0: 3, x1: 5, y0: 3, y1: 5 } };
+    const cfg = { ...DEFAULT_ARENA, garden: { x0: 4, x1: 4, y0: 3, y1: 3 } };
     const result = simulateBattle(cfg, [[3, 4], [4, 4], [5, 4]], [[20, 4], [21, 4], [22, 4]], { history: true });
     expect(result.generations).toBe(2);
-    expect(result.score).toEqual({ red: 5, blue: 0 });
-    expect(result.history!.map((entry) => entry.scoreRed)).toEqual([3, 5, 5]);
+    expect(result.score).toEqual({ red: 1, blue: 0 });
+    expect(result.history!.map((entry) => entry.scoreRed)).toEqual([0, 1, 1]);
   });
 
   it('rejects malformed garden bounds and extinction flags', () => {
@@ -721,8 +719,8 @@ describe('huge arena', () => {
     expect(ARENA_SIZES).toEqual(['small', 'medium', 'large', 'xl', 'huge']);
     expect(presetFor('legacy', 'huge')).toBeNull();
     expect(presetFor('legacy', 'xl')).toBeNull();
-    expect(deployZone(ARENA_PRESETS.huge, RED)).toEqual({ x0: 0, x1: 53, y0: 0, y1: 71 });
-    expect(deployZone(ARENA_PRESETS.huge, BLUE)).toEqual({ x0: 66, x1: 119, y0: 0, y1: 71 });
+    expect(deployZone(ARENA_PRESETS.huge, RED)).toEqual({ x0: 0, x1: 57, y0: 0, y1: 71 });
+    expect(deployZone(ARENA_PRESETS.huge, BLUE)).toEqual({ x0: 62, x1: 119, y0: 0, y1: 71 });
   });
 
   it('fits Gosper, Simkin and p46 unrotated in huge, and p46 upright in xl', () => {
@@ -733,9 +731,11 @@ describe('huge arena', () => {
         const points = orientPoints(placePattern(pattern, 0, 0), { rot: size === 'xl' ? 1 : 0, flip: false });
         const minX = Math.min(...points.map(([x]) => x));
         const minY = Math.min(...points.map(([, y]) => y));
+        const maxX = Math.max(...points.map(([x]) => x)) - minX;
         for (const team of [RED, BLUE] as const) {
           const z = deployZone(cfg, team);
-          const army = points.map(([x, y]): Pt => [x - minX + z.x0, y - minY]);
+          const x0 = team === RED ? z.x0 : z.x1 - maxX;
+          const army = points.map(([x, y]): Pt => [x - minX + x0, y - minY]);
           expect(validateDeployment(cfg, team, army)).toEqual({ ok: true });
         }
       }

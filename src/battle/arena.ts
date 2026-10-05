@@ -3,6 +3,8 @@ export const RED = 1;
 export const BLUE = 2;
 export type Team = 1 | 2;
 export type Pt = [number, number];
+/** Inclusive cell bounds. */
+export interface DeployRect { x0: number; x1: number; y0: number; y1: number }
 
 export interface ArenaConfig {
   width: number;
@@ -34,11 +36,10 @@ export const ARENA_PRESETS: Record<ArenaSize, ArenaConfig> = {
   large: { ...LEGACY_PRESETS.large, buffer: 5, endOnExtinction: true,
     garden: { x0: 23, x1: 32, y0: 15, y1: 24 } },
   // The current battle arena: room for big structures (a Gosper gun is 36x9).
-  // Zones: red x 0..33, blue x 46..79; the 12x12 garden fills the gap.
+  // Deployment halves extend above/below the 12x12 garden.
   xl: { width: 80, height: 56, budget: 100, generations: 360, buffer: 6, wrapX: false, wrapY: true,
     endOnExtinction: true, garden: { x0: 34, x1: 45, y0: 22, y1: 33 } },
-  // 54x72 zones fit the largest guns; keep the same 12-column garden gap.
-  // About twice xl's zone area, with a modestly lower deployment density.
+  // Room for the largest guns beside the same 12x12 garden.
   huge: { width: 120, height: 72, budget: 180, generations: 480, buffer: 6, wrapX: false, wrapY: true,
     endOnExtinction: true, garden: { x0: 54, x1: 65, y0: 30, y1: 41 } },
 };
@@ -242,16 +243,44 @@ function equalGrid(a: Grid, b: Grid): boolean {
   return true;
 }
 
-export function deployZone(cfg: ArenaConfig, team: Team): { x0: number; x1: number; y0: number; y1: number } {
+/** Bounding rectangle; garden battles also exclude the garden itself. */
+export function deployZone(cfg: ArenaConfig, team: Team): DeployRect {
   const error = configError(cfg);
   if (error) throw new RangeError(error);
   if (team !== RED && team !== BLUE) throw new RangeError('Unknown team.');
   const middle = Math.floor(cfg.width / 2);
+  // For even widths the midline is between middle-1 and middle. Leave two
+  // columns on each side: middle-2..middle+1 (80: 38..41, 120: 58..61).
+  const buffer = cfg.garden !== undefined ? 2 : cfg.buffer;
   return {
-    x0: team === RED ? 0 : middle + cfg.buffer,
-    x1: team === RED ? middle - cfg.buffer - 1 : cfg.width - 1,
+    x0: team === RED ? 0 : middle + buffer,
+    x1: team === RED ? middle - buffer - 1 : cfg.width - 1,
     y0: 0, y1: cfg.height - 1,
   };
+}
+
+function inRect(rect: DeployRect, x: number, y: number): boolean {
+  return x >= rect.x0 && x <= rect.x1 && y >= rect.y0 && y <= rect.y1;
+}
+
+export function inDeployZone(cfg: ArenaConfig, team: Team, x: number, y: number): boolean {
+  return Number.isSafeInteger(x) && Number.isSafeInteger(y)
+    && inRect(deployZone(cfg, team), x, y)
+    && !(cfg.garden && inRect(cfg.garden, x, y));
+}
+
+/** Disjoint rectangles covering the deployment half minus the garden, with no halo. */
+export function deployZoneRects(cfg: ArenaConfig, team: Team): DeployRect[] {
+  const zone = deployZone(cfg, team);
+  if (zone.x1 < zone.x0) return [];
+  const g = cfg.garden;
+  if (!g || g.x1 < zone.x0 || g.x0 > zone.x1) return [zone];
+  return [
+    { ...zone, y1: g.y0 - 1 },
+    { ...zone, y0: g.y1 + 1 },
+    { x0: zone.x0, x1: g.x0 - 1, y0: g.y0, y1: g.y1 },
+    { x0: g.x1 + 1, x1: zone.x1, y0: g.y0, y1: g.y1 },
+  ].filter((r) => r.x0 <= r.x1 && r.y0 <= r.y1);
 }
 
 export function validateDeployment(
@@ -262,7 +291,6 @@ export function validateDeployment(
   if (team !== RED && team !== BLUE) return { ok: false, reason: 'Unknown team.' };
   if (!Array.isArray(points)) return { ok: false, reason: 'Deployment must be an array of points.' };
   if (points.length > cfg.budget) return { ok: false, reason: 'Deployment exceeds the cell budget.' };
-  const zone = deployZone(cfg, team);
   const seen = new Set<number>();
   for (const point of points) {
     if (!Array.isArray(point) || point.length !== 2
@@ -270,7 +298,7 @@ export function validateDeployment(
       return { ok: false, reason: 'Coordinates must be integer pairs.' };
     }
     const [x, y] = point;
-    if (x < zone.x0 || x > zone.x1 || y < zone.y0 || y > zone.y1) {
+    if (!inDeployZone(cfg, team, x, y)) {
       return { ok: false, reason: 'Cell is outside the team deployment zone.' };
     }
     const key = y * cfg.width + x;

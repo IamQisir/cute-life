@@ -1,5 +1,5 @@
-import { BLUE, RED, deployZone, simulateBattle, validateDeployment } from './arena';
-import type { ArenaConfig, Pt, Team } from './arena';
+import { BLUE, RED, deployZone, deployZoneRects, inDeployZone, simulateBattle, validateDeployment } from './arena';
+import type { ArenaConfig, DeployRect, Pt, Team } from './arena';
 import { classify } from '../life/clusters';
 import { BATTLE_PATTERN_NAMES, PATTERNS } from '../life/patterns';
 import { orientPoints } from '../life/orientation';
@@ -27,6 +27,18 @@ function mulberry32(seed: number): Random {
 }
 const integer = (random: Random, size: number): number => Math.floor(random() * size);
 const DIRECTIONS: Pt[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+/** Uniformly sample a cell from disjoint deployment rectangles. */
+function randomCell(rects: DeployRect[], random: Random): Pt {
+  let cell = integer(random, rects.reduce((sum, r) => sum + (r.x1 - r.x0 + 1) * (r.y1 - r.y0 + 1), 0));
+  for (const r of rects) {
+    const width = r.x1 - r.x0 + 1;
+    const area = width * (r.y1 - r.y0 + 1);
+    if (cell < area) return [r.x0 + cell % width, r.y0 + Math.floor(cell / width)];
+    cell -= area;
+  }
+  throw new RangeError('The team deployment zone is empty.');
+}
 
 /** One orientation of a palette structure, normalised to start at (0, 0). */
 interface Shape {
@@ -154,12 +166,13 @@ function candidate(cfg: ArenaConfig, team: Team, random: Random, clumpsOnly = fa
   const width = zone.x1 - zone.x0 + 1;
   const points: Pt[] = [];
   const occupied = new Set<number>();
-  const center: Pt = [zone.x0 + integer(random, width), integer(random, cfg.height)];
+  const center: Pt = cfg.garden ? randomCell(deployZoneRects(cfg, team), random)
+    : [zone.x0 + integer(random, width), integer(random, cfg.height)];
   const compact = clumpsOnly || random() < 0.55;
   const radius = 3 + integer(random, 5);
 
   function add(x: number, y: number): boolean {
-    if (x < zone.x0 || x > zone.x1 || y < 0 || y >= cfg.height) return false;
+    if (!inDeployZone(cfg, team, x, y)) return false;
     const key = y * cfg.width + x;
     if (occupied.has(key) || points.length >= cfg.budget) return false;
     occupied.add(key);
@@ -187,7 +200,8 @@ function candidate(cfg: ArenaConfig, team: Team, random: Random, clumpsOnly = fa
       : integer(random, cfg.height - maxY);
     shape = aimAtGarden(cfg, pick, x, y, random);
     const placed = shape.points.map(([px, py]): Pt => [x + px, y + py]);
-    if (placed.some(([px, py]) => occupied.has(py * cfg.width + px))) continue;
+    if (placed.some(([px, py]) => !inDeployZone(cfg, team, px, py)
+      || occupied.has(py * cfg.width + px))) continue;
     for (const [px, py] of placed) add(px, py);
   }
 
@@ -218,7 +232,9 @@ export function chooseDeployment(
   const valid = validateDeployment(cfg, team, []);
   if (!valid.ok) throw new RangeError(valid.reason);
   const zone = deployZone(cfg, team);
-  if (cfg.budget > Math.max(0, zone.x1 - zone.x0 + 1) * cfg.height) {
+  const capacity = deployZoneRects(cfg, team).reduce((sum, r) =>
+    sum + (r.x1 - r.x0 + 1) * (r.y1 - r.y0 + 1), 0);
+  if (cfg.budget > capacity) {
     throw new RangeError('The cell budget exceeds the team deployment zone capacity.');
   }
   if (!AI_EFFORT[stars]) throw new RangeError('AI stars must be between 1 and 5.');
@@ -262,7 +278,8 @@ export function chooseDeployment(
         const y = best[move][1] + dy;
         points[move] = [best[move][0] + dx, cfg.wrapY ? (y + cfg.height) % cfg.height : y];
       } else {
-        points[move] = [zone.x0 + integer(random, zone.x1 - zone.x0 + 1), integer(random, cfg.height)];
+        points[move] = cfg.garden ? randomCell(deployZoneRects(cfg, team), random)
+          : [zone.x0 + integer(random, zone.x1 - zone.x0 + 1), integer(random, cfg.height)];
       }
       if (!validateDeployment(cfg, team, points).ok) continue;
       const value = score(points);

@@ -14,7 +14,8 @@ import {
   type Team,
   type Winner,
   decideWinner,
-  deployZone,
+  deployZoneRects,
+  inDeployZone,
   presetFor,
   placeArmies,
   simulateBattle,
@@ -99,16 +100,12 @@ export class BattleMode {
   }
 
   layout(): ArenaLayout {
-    const z = (t: Team) => {
-      const { x0, x1 } = deployZone(this.cfg, t);
-      return { x0, x1 };
-    };
     return {
       width: this.cfg.width,
       height: this.cfg.height,
       wrapX: this.cfg.wrapX,
       wrapY: this.cfg.wrapY,
-      zones: { 1: z(RED), 2: z(BLUE) },
+      zones: { 1: deployZoneRects(this.cfg, RED), 2: deployZoneRects(this.cfg, BLUE) },
     };
   }
 
@@ -157,8 +154,7 @@ export class BattleMode {
   /** Toggle/paint a cell during deployment. Returns the painted value, or null if not allowed. */
   paint(x: number, y: number, now: number, value?: boolean): boolean | null {
     if (this.phase !== 'deploy') return null;
-    const zone = deployZone(this.cfg, this.myTeam);
-    if (x < zone.x0 || x > zone.x1 || y < zone.y0 || y > zone.y1) return null;
+    if (!inDeployZone(this.cfg, this.myTeam, x, y)) return null;
     const i = this.army.findIndex(([ax, ay]) => ax === x && ay === y);
     const v = value ?? i < 0;
     if (v && i < 0) {
@@ -177,8 +173,7 @@ export class BattleMode {
   /** Why a stamp can't be placed, or null if it can. */
   stampProblem(points: Pt[]): 'zone' | 'budget' | null {
     if (this.phase !== 'deploy') return 'zone';
-    const zone = deployZone(this.cfg, this.myTeam);
-    if (points.some(([x, y]) => x < zone.x0 || x > zone.x1 || y < zone.y0 || y > zone.y1)) return 'zone';
+    if (points.some(([x, y]) => !inDeployZone(this.cfg, this.myTeam, x, y))) return 'zone';
     const have = new Set(this.army.map(([x, y]) => `${x},${y}`));
     const fresh = points.filter(([x, y]) => !have.has(`${x},${y}`));
     return fresh.length > this.budgetLeft ? 'budget' : null;

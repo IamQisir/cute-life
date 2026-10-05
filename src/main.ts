@@ -962,7 +962,9 @@ async function main() {
     cam.zoom = shared.cam.zoom;
     holdCameraAim();
   }
-  window.addEventListener('resize', () => {
+  // Pixi's resizeTo applies a window resize a frame later; reading app.screen in a
+  // window listener got the old size, leaving the new strip (Safari) without grid.
+  app.renderer.on('resize', () => {
     cam.w = app.screen.width;
     cam.h = app.screen.height;
     view.resize(cam.w, cam.h);
